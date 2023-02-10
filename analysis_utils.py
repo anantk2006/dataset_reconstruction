@@ -156,3 +156,64 @@ def sweep_get_data_model(sweep, verbose=True, run_train_test=False, put_in_sweep
         sweep.model = model
 
     return args, Xtrn, Ytrn, ds_mean, W, model
+def sweep_get_data_model(sweep, verbose=True, run_train_test=False, put_in_sweep=True):
+    # Get Training data for this sweep
+    l = []
+    if hasattr(sweep, 'problem'): l.append(f'--problem={sweep.problem}')
+    for k, value in sweep.config['parameters'].items():
+        if 'value' not in value: continue
+        v = value['value']
+        if k is None: continue
+        l.append(f"--{k}={v}")
+    l.append('--wandb_active=False')
+    args = get_args(l)
+    args = setup_args(args)
+    if verbose: print(args)
+
+    train_loader, test_loader, val_loader = setup_problem(args)
+
+    # train set
+    Xtrn, Ytrn = next(iter(train_loader))
+    ds_mean = Xtrn.mean(dim=0, keepdims=True).data
+    Xtrn = Xtrn.data - ds_mean.data
+
+    # test set
+    Xtst, Ytst = next(iter(test_loader))
+    Xtst = Xtst - ds_mean
+
+    # verify balancedness
+    if verbose: print('BALNACENESS TRN:', {c: Ytrn[Ytrn == c].shape[0] for c in range(args.num_classes)})
+    if verbose: print('BALNACENESS TST:', {c: Ytst[Ytst == c].shape[0] for c in range(args.num_classes)})
+
+    # get model
+    model = create_model(args, extraction=False)
+    model = common_utils.common.load_weights(model, args.pretrained_model_path, device=args.device)
+    model.eval()
+    # get model's weights
+    W = model.layers[0].weight
+
+    if run_train_test:
+        train_loader = [(Xtrn, Ytrn)]
+        test_loader = [(Xtst, Ytst)]
+        # compute train/test (reduce mean there..)
+        trn_error, trn_loss, trn_vals = epoch_ce(args, train_loader, model, epoch=-1, device=args.device, opt=None)
+        if verbose: print('Train Error:', trn_error, trn_loss)
+        tst_error, tst_loss, tst_vals = epoch_ce(args, test_loader, model, epoch=-1, device=args.device, opt=None)
+        if verbose: print('Test  Error:', tst_error, tst_loss)
+        sweep.trn_error = trn_error
+        sweep.trn_loss = trn_loss
+        sweep.tst_error = tst_error
+        sweep.tst_loss = tst_loss
+
+    if put_in_sweep:
+        sweep.Xtrn = Xtrn
+        sweep.Ytrn = Ytrn
+        sweep.Xtst = Xtst
+        sweep.Ytst = Ytst
+        sweep.ds_mean = ds_mean
+        sweep.W = W
+        sweep.model = model
+
+    return args, Xtrn, Ytrn, ds_mean, W, model
+
+

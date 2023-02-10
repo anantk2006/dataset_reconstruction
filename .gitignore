@@ -148,3 +148,5 @@ cython_debug/
 # vscode
 .vscode/
 settings.py
+data
+results
