@@ -14,6 +14,8 @@ from CreateModel import create_model
 from extraction import calc_extraction_loss, evaluate_extraction, get_trainable_params
 from GetParams import get_args
 
+import torch.distributed as dist
+
 thread_limit = threadpoolctl.threadpool_limits(limits=8)
 os.environ['QT_QPA_PLATFORM'] = 'offscreen'
 
@@ -75,31 +77,86 @@ def epoch_ce(args, dataloader, model, epoch, device, opt=None):
 
         total_loss.update(loss.item())
     return total_err.avg, total_loss.avg, p.data
+def average_grad(world_size, model, group):
+    for param in model.parameters():
+        dist.reduce(param.grad.data, dst=0, op=dist.ReduceOp.SUM, group=group)
+        param.grad.data /= world_size
+        dist.broadcast(param.grad.data, src=0, group=group)
+def find_free_port():
+    """ https://stackoverflow.com/questions/1365265/on-localhost-how-do-i-pick-a-free-port-number """
+    import socket
+    from contextlib import closing
 
+    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+        s.bind(('', 0))
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        return str(s.getsockname()[1])
+
+
+def setup_process(rank, master_addr, master_port, world_size, backend='nccl'):
+    print(f'setting up {rank=} {world_size=} {backend=}')
+
+    # set up the master's ip address so this child process can coordinate
+    os.environ['MASTER_ADDR'] = master_addr
+    os.environ['MASTER_PORT'] = master_port
+    print(f"{master_addr=} {master_port=}")
+
+    # Initializes the default distributed process group, and this will also initialize the distributed package.
+    dist.init_process_group(backend, rank=rank, world_size=world_size)
+    print(f"{rank=} init complete")
+    dist.destroy_process_group()
+    print(f"{rank=} destroy complete")
 
 def train(args, train_loader, test_loader, val_loader, model):
+    
+    
+    master_addr = '127.0.0.1'
+    master_port = find_free_port()
+    setup_process(0, master_addr,master_port,args.num_clients)
+
     optimizer = torch.optim.SGD(model.parameters(), lr=args.train_lr)
     print('Model:')
     print(model)
-
+    group = dist.new_group(range(args.num_clients))
     # Handle Reduce Mean
     if args.data_reduce_mean:
-        print('Reducing Trainset-Mean from Trainset and Testset')
-        Xtrn, Ytrn = next(iter(train_loader))
-        ds_mean = Xtrn.mean(dim=0, keepdims=True)
-        Xtrn = Xtrn - ds_mean
-        train_loader = [(Xtrn, Ytrn)]
+        for gen in train_loader;
+            print('Reducing Trainset-Mean from Trainset and Testset')
+            Xtrn, Ytrn = gen
+            ds_mean = Xtrn.mean(dim=0, keepdims=True)
+            Xtrn = Xtrn - ds_mean
+            train_loader = [(Xtrn, Ytrn)]
 
-        Xtst, Ytst = next(iter(test_loader))
-        Xtst = Xtst - ds_mean
-        test_loader = [(Xtst, Ytst)]
-
+            Xtst, Ytst = next(iter(test_loader))
+            Xtst = Xtst - ds_mean
+            test_loader = [(Xtst, Ytst)]
+    t_total = 0
     for epoch in range(args.train_epochs + 1):
         # if args.train_SGD:
         #     train_error, train_loss, output = epoch_ce_sgd(args, train_loader, model, epoch, args.device, args.train_SGD_batch_size, optimizer)
         # else:
-        train_error, train_loss, output = epoch_ce(args, train_loader, model, epoch, args.device, optimizer)
+        total_loss, total_err = AverageValueMeter(), AverageValueMeter()
+        model.train()
+        for i, (x, y) in enumerate(train_loader):
+            t_total+= y.numel()
+            x, y = x.cuda(), y.cuda()
+            loss, p = get_loss_ce(args, model, x, y)
 
+            
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            err = get_total_err(args, p, y)
+            total_err.update(err)
+
+            total_loss.update(loss.item())
+        train_loss = total_loss.avg
+        train_error = total_err.avg
+        output = p.data
+        if not t_total % args.avg_interval:
+            average_grad(args.num_clients, model, group)
+        
         if epoch % args.train_evaluate_rate == 0:
             test_error, test_loss, _ = epoch_ce(args, test_loader, model, args.device, None, None)
             if val_loader is not None:

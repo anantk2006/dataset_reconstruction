@@ -80,6 +80,10 @@ def get_args(*args):
     parser.add_argument('--extraction_min_lambda', default=0.05, type=float, help='minimum lambda in the extraction loss')
     parser.add_argument('--extraction_loss_type', default='kkt', help='options: kkt, naive')
     parser.add_argument('--extraction_stop_threshold', default=5000, type=int)
+
+    parser.add_argument("--num_clients", default = 8, type=int, help = "number of gpus with data")
+    parser.add_argument("--store", default = "/home/akhande/dataset_reconstruction/federatedsharing.pt", type=str, help = "folder where comms go")
+    parser.add_argument("--avg_interval", default = "100", type=int, help = "iteration interval between consecutive averaging")
     if not isinstance(args, list):
         args = args[0]
     args = parser.parse_args(args)
