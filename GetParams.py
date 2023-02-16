@@ -82,8 +82,9 @@ def get_args(*args):
     parser.add_argument('--extraction_stop_threshold', default=5000, type=int)
 
     parser.add_argument("--num_clients", default = 8, type=int, help = "number of gpus with data")
-    parser.add_argument("--store", default = "/home/akhande/dataset_reconstruction/federatedsharing.pt", type=str, help = "folder where comms go")
+    parser.add_argument("--init_method", default = "/home/akhande/dataset_reconstruction/", type=str, help = "folder where comms go")
     parser.add_argument("--avg_interval", default = "100", type=int, help = "iteration interval between consecutive averaging")
+    parser.add_argument("--rank", default = 0, type=int, help = "rank of process here")
     if not isinstance(args, list):
         args = args[0]
     args = parser.parse_args(args)
