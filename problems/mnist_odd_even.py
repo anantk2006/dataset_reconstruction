@@ -68,24 +68,21 @@ def get_balanced_data(args, data_loader, data_amount):
 def load_mnist_data(args):
     # Get Train Set
     data_loader = load_mnist(root=args.datasets_dir, batch_size=100, train=True, shuffle=True, start=0, end=50000)
-    data_gens = []
-    for i in range(args.num_clients):
-        data_gens.append(get_balanced_data(args, data_loader, args.data_amount))
+    x0, y0 = get_balanced_data(args, data_loader, args.data_amount)
 
     # Get Test Set
     print('LOADING TESTSET')
     assert not args.data_use_test or (args.data_use_test and args.data_test_amount >= 2), f"args.data_use_test={args.data_use_test} but args.data_test_amount={args.data_test_amount}"
-    data_loader = load_mnist(root=args.datasets_dir, batch_size=100, train=False, shuffle=False, start=0, end=10000)
+    data_loader = load_mnist(root=args.datasets_dir, batch_size=100, train=False, shuffle=True, start=0, end=10000)
     x0_test, y0_test = get_balanced_data(args, data_loader, args.data_test_amount)
 
     # move to cuda and double
-    for i,(x,y) in enumerate(data_gens):
-        data_gens[i] = move_to_type_device(x, y, args.device)
+    x0, y0 = move_to_type_device(x0, y0, args.device)
     x0_test, y0_test = move_to_type_device(x0_test, y0_test, args.device)
 
-    #print(f'BALANCE: 0: {y0[y0 == 0].shape[0]}, 1: {y0[y0 == 1].shape[0]}')
+    print(f'BALANCE: 0: {y0[y0 == 0].shape[0]}, 1: {y0[y0 == 1].shape[0]}')
 
-    return data_gens, [(x0_test, y0_test)], None
+    return [(x0, y0)], [(x0_test, y0_test)], None
 
 
 def get_dataloader(args):
