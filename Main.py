@@ -63,8 +63,9 @@ def get_total_err(args, p, y):
 def epoch_ce(args, dataloader, model, epoch, device, opt=None):
     total_loss, total_err = AverageValueMeter(), AverageValueMeter()
     model.train()
+    model = model.cuda()
     for i, (x, y) in enumerate(dataloader):
-        x, y = x.to(device), y.to(device)
+        x, y = x.cuda(), y.cuda()
         loss, p = get_loss_ce(args, model, x, y)
 
         if opt:
@@ -78,13 +79,35 @@ def epoch_ce(args, dataloader, model, epoch, device, opt=None):
         total_loss.update(loss.item())
     return total_err.avg, total_loss.avg, p.data
 
-
+def average_model(world_size, model):
+    for param in model.parameters():
+        dist.reduce(param.data, dst=0, op=dist.ReduceOp.SUM)
+        param.data /= world_size
+        dist.broadcast(param.data, src=0)
 
 def train(args, train_loader, test_loader, val_loader, model):
+    if args.is_federated:
+        sys.stdout = sys.__stdout__
+        print(args.rank)
+        print(args.device, args.num_clients)
+    # prefix = "file://"
+    # assert args.init_method.startswith(prefix)
+    # sharedfile_path = args.init_method[len(prefix):]
+    # if os.path.isfile(sharedfile_path) and args.rank == 0:
+    #     print(
+    #         "\n========================\n"
+    #         f"Sharedfile {sharedfile_path} already exists. Deleting now.\n"
+    #         "We are assuming that this is an old sharedfile which is fine to delete."
+    #         " If this sharefile is actively being used during another training run,"
+    #         " then you have mistakenly provided the same sharefile path to two"
+    #         " different runs. In this case, deleting the sharedfile (as we are doing"
+    #         " now) will likely destroy the other training run."
+    #         " Be careful to avoid this.\n"
+    #         "========================\n"
+    #     )
+    #     os.remove(sharedfile_path)
+    if args.is_federated: dist.init_process_group(backend="nccl", rank=args.rank, world_size=args.num_clients, init_method=args.init_method)
     
-    
-    
-    dist.init_process_group("nccl", rank=0, world_size=args.num_clients, init_method="file:///home/akhande/dataset_reconstruction/federatedsharing.pt")
     optimizer = torch.optim.SGD(model.parameters(), lr=args.train_lr)
     print('Model:')
     print(model)
@@ -101,7 +124,9 @@ def train(args, train_loader, test_loader, val_loader, model):
             Xtst, Ytst = next(iter(test_loader))
             Xtst = Xtst - ds_mean
             test_loader = [(Xtst, Ytst)]
+    iters = 0
     t_total = 0
+    torch.set_printoptions(precision=20)
     for epoch in range(args.train_epochs + 1):
         # if args.train_SGD:
         #     train_error, train_loss, output = epoch_ce_sgd(args, train_loader, model, epoch, args.device, args.train_SGD_batch_size, optimizer)
@@ -109,8 +134,14 @@ def train(args, train_loader, test_loader, val_loader, model):
         total_loss, total_err = AverageValueMeter(), AverageValueMeter()
         model.train()
         for i, (x, y) in enumerate(train_loader):
+            if args.is_federated and iters > args.avg_interval:
+                
+                dist.barrier()
+                average_model(args.num_clients, model)
+              
+                iters = 0
             t_total+= y.numel()
-            x, y = x.cuda(), y.cuda()
+            x, y, model = x.cuda(), y.cuda(), model.cuda()
             loss, p = get_loss_ce(args, model, x, y)
 
             
@@ -122,10 +153,25 @@ def train(args, train_loader, test_loader, val_loader, model):
             total_err.update(err)
 
             total_loss.update(loss.item())
+            iters += 1
+            
         train_loss = total_loss.avg
         train_error = total_err.avg
         output = p.data
+
+
+        if args.is_federated:
+            dist.reduce(torch.Tensor([train_loss]), dst=0, op=dist.ReduceOp.SUM)
+            train_loss /= args.num_clients
+        if train_loss<args.train_threshold:
+            if args.is_federated:
+                dist.barrier()
+                average_model(args.num_clients, model)
+            break
         
+        
+            
+
         
         if epoch % args.train_evaluate_rate == 0:
             test_error, test_loss, _ = epoch_ce(args, test_loader, model, args.device, None, None)
@@ -136,7 +182,7 @@ def train(args, train_loader, test_loader, val_loader, model):
                 print(now(),
                       f'Epoch {epoch}: train-loss = {train_loss:.8g} ; train-error = {train_error:.4g} ; test-loss = {test_loss:.8g} ; test-error = {test_error:.4g} ; p-std = {output.abs().std()}; p-val = {output.abs().mean()}')
 
-            if args.rank ==0 and args.wandb_active:
+            if args.wandb_active:
                 wandb.log({"epoch": epoch, "train loss": train_loss, 'train error': train_error, 'p-val':output.abs().mean(), 'p-std': output.abs().std()})
                 if val_loader is not None:
                     wandb.log({'validation loss': validation_loss, 'validation error': validation_error})
@@ -145,14 +191,16 @@ def train(args, train_loader, test_loader, val_loader, model):
         if np.isnan(train_loss):
             raise ValueError('Optimizer diverged')
 
-        if train_loss < args.train_threshold:
-            print(f'Reached train threshold {args.train_threshold} (train_loss={train_loss})')
-            break
+        
 
         if args.rank ==0 and args.train_save_model_every > 0 and epoch % args.train_save_model_every == 0:
             save_weights(os.path.join(args.output_dir, 'weights'), model, ext_text=args.model_name, epoch=epoch)
+        
 
     print(now(), 'ENDED TRAINING')
+    if args.is_federated: average_model(args.num_clients, model)
+    iters = 0
+            
     return model
 
 
@@ -240,12 +288,15 @@ def create_dirs_save_files(args):
 
 def setup_args(args):
     torch.manual_seed(args.seed)
+    from settings import datasets_dir, models_dir, results_base_dir
+    args.datasets_dir = datasets_dir
+        
+    args.device = torch.device(f'cuda:{args.rank}' if torch.cuda.is_available() else 'cpu')
     if args.rank == 0:
-        args.device = torch.device(f'cuda:{args.rank}' if torch.cuda.is_available() else 'cpu')
+        
 
-        from settings import datasets_dir, models_dir, results_base_dir
+        
         args.results_base_dir = results_base_dir
-        args.datasets_dir = datasets_dir
         if args.pretrained_model_path:
             args.pretrained_model_path = os.path.join(models_dir, args.pretrained_model_path)
         args.model_name = f'{args.problem}_d{args.data_per_class_train}'
@@ -277,9 +328,10 @@ def main_train(args, train_loader, test_loader, val_loader):
     model = create_model(args, extraction=False)
     if args.wandb_active:
         wandb.watch(model)
-
+    
+    
     trained_model = train(args, train_loader, test_loader, val_loader, model)
-    if args.train_save_model:
+    if args.rank==0 and args.train_save_model:
         save_weights(args.output_dir, trained_model, ext_text=args.model_name)
 
 
@@ -302,19 +354,25 @@ def validate_settings_exists():
 
 
 def main():
+    
     print(now(), 'STARTING!')
     validate_settings_exists()
     args = get_args(sys.argv[1:])
     args = setup_args(args)
+    if args.rank != 0:
+        dn = open(os.devnull, "w")
+        sys.stdout = dn
     create_dirs_save_files(args)
     print('ARGS:')
     print(args)
     print('*'*100)
 
-    if args.cuda:
-        print(f'os.environ["CUDA_VISIBLE_DEVICES"]={os.environ["CUDA_VISIBLE_DEVICES"]}')
+    
     if args.precision == 'double':
         torch.set_default_dtype(torch.float64)
+    if args.cuda:
+        print(f'os.environ["CUDA_VISIBLE_DEVICES"]={os.environ["CUDA_VISIBLE_DEVICES"]}')
+    torch.cuda.set_device(args.rank)
 
     print('DEVICE:', args.device)
     print('DEFAULT DTYPE:', torch.get_default_dtype())

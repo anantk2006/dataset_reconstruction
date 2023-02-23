@@ -27,10 +27,12 @@ def load_mnist(root, batch_size, train=False, transform=None, target_transform=N
 
 
 def move_to_type_device(x, y, device):
+    print(device)
     print('X:', x.shape)
     print('y:', y.shape)
     x = x.to(torch.get_default_dtype())
     y = y.to(torch.get_default_dtype())
+    
     x, y = x.to(device), y.to(device)
     return x, y
 

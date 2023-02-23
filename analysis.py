@@ -136,6 +136,7 @@ def sort_by_metric(xx, yy, sort='ssim'):
         dists = get_ssim_pairs_kornia(xx, yy)
         dssim = (1 - dists) / 2
         _, sort_idxs = dists.sort(descending=True)
+        print(_)
     elif sort == 'ncc':
         dists = (normalize_batch(xx) - normalize_batch(yy)).reshape(xx.shape[0], -1).norm(dim=1)
         _, sort_idxs = dists.sort()

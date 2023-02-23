@@ -20,11 +20,19 @@ SHAREDFILE="file:///home/akhande/dataset_reconstruction/federatedfiles/sharedfil
 
 
 pids=""
-for i in {0..8}
+for i in {0..7}
 do
     #echo dddddddddddddddddddddddddddddddddddddddddddddd
+    # if [ $i -eq 0 ]
+    # then
+    #     continue
+    # fi
+    # if [ $i -eq 4 ]
+    # then
+    #     continue
+    # fi
     RANK=$i
-    CUDA_VISIBLE_DEVICES=0 \
+    CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
     python Main.py \
         --run_mode=train \
         --problem=$PROBLEM \
@@ -39,6 +47,7 @@ do
         --num_clients=$WORLD_SIZE \
         --init_method=$SHAREDFILE \
         --avg_interval=$AVG_INTERVAl \
+        --seed=$i &
 
     #pids="${pids} $!"
     
