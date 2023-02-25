@@ -63,7 +63,7 @@ def get_args(*args):
     parser.add_argument('--train_epochs', default=1000, type=int, help='')
     parser.add_argument('--train_lr', default=0.01, type=float, help='')
     parser.add_argument('--train_evaluate_rate', default=1000, type=int, help='')
-    parser.add_argument('--train_threshold', default=1e-6, type=float, help='stop training below this loss')
+    parser.add_argument('--train_threshold', default=0.0001, type=float, help='stop training below this loss')
     parser.add_argument('--train_SGD', default='false', type=str2bool, help='')
     parser.add_argument('--train_SGD_batch_size', default=64, type=int, help='')
 
@@ -82,7 +82,7 @@ def get_args(*args):
     parser.add_argument('--extraction_loss_type', default='kkt', help='options: kkt, naive')
     parser.add_argument('--extraction_stop_threshold', default=5000, type=int)
 
-    parser.add_argument("--is_federated", default = "true", type = str2bool)
+    parser.add_argument("--is_federated", default = True, type = bool)
     parser.add_argument("--num_clients", default = 8, type=int, help = "number of gpus with data")
     parser.add_argument("--init_method", default = "/home/akhande/dataset_reconstruction/", type=str, help = "folder where comms go")
     parser.add_argument("--avg_interval", default = "100", type=int, help = "iteration interval between consecutive averaging")

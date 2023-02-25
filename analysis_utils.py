@@ -114,6 +114,8 @@ def sweep_get_data_model(sweep, verbose=True, run_train_test=False, put_in_sweep
     train_loader, test_loader, val_loader = setup_problem(args)
 
     # train set
+    
+
     Xtrn, Ytrn = next(iter(train_loader))
     ds_mean = Xtrn.mean(dim=0, keepdims=True).data
     Xtrn = Xtrn.data - ds_mean.data
@@ -156,7 +158,7 @@ def sweep_get_data_model(sweep, verbose=True, run_train_test=False, put_in_sweep
         sweep.model = model
 
     return args, Xtrn, Ytrn, ds_mean, W, model
-def sweep_get_data_model(sweep, verbose=True, run_train_test=False, put_in_sweep=True):
+def sweep_get_data_model(sweep, datapath, verbose=True, run_train_test=False, put_in_sweep=True, is_federated = True):
     # Get Training data for this sweep
     l = []
     if hasattr(sweep, 'problem'): l.append(f'--problem={sweep.problem}')
@@ -173,9 +175,22 @@ def sweep_get_data_model(sweep, verbose=True, run_train_test=False, put_in_sweep
     train_loader, test_loader, val_loader = setup_problem(args)
 
     # train set
-    Xtrn, Ytrn = next(iter(train_loader))
-    ds_mean = Xtrn.mean(dim=0, keepdims=True).data
-    Xtrn = Xtrn.data - ds_mean.data
+    print(args)
+    if is_federated:
+        Xtrn = []
+        Ytrn = []
+        for i in range(8):
+            Xt, Yt = next(iter(torch.load(f"{datapath}_{i}.pt", map_location=torch.device("cuda:0"))))    
+            ds_mean = Xt.mean(dim=0, keepdims=True).data
+            Xt = Xt.data - ds_mean.data
+            Xtrn.append(Xt)
+            Ytrn.append(Yt)
+        Xtrn = torch.cat(Xtrn, dim = 0)
+        Ytrn = torch.cat(Ytrn, dim = 0)
+    else:
+        Xtrn, Ytrn = next(iter(torch.load(f"{datapath}_0.pt")))    
+        ds_mean = Xtrn.mean(dim=0, keepdims=True).data
+        Xtrn = Xtrn.data - ds_mean.data
 
     # test set
     Xtst, Ytst = next(iter(test_loader))
@@ -187,6 +202,7 @@ def sweep_get_data_model(sweep, verbose=True, run_train_test=False, put_in_sweep
 
     # get model
     model = create_model(args, extraction=False)
+    
     model = common_utils.common.load_weights(model, args.pretrained_model_path, device=args.device)
     model.eval()
     # get model's weights
@@ -196,14 +212,14 @@ def sweep_get_data_model(sweep, verbose=True, run_train_test=False, put_in_sweep
         train_loader = [(Xtrn, Ytrn)]
         test_loader = [(Xtst, Ytst)]
         # compute train/test (reduce mean there..)
-        trn_error, trn_loss, trn_vals = epoch_ce(args, train_loader, model, epoch=-1, device=args.device, opt=None)
-        if verbose: print('Train Error:', trn_error, trn_loss)
-        tst_error, tst_loss, tst_vals = epoch_ce(args, test_loader, model, epoch=-1, device=args.device, opt=None)
-        if verbose: print('Test  Error:', tst_error, tst_loss)
-        sweep.trn_error = trn_error
-        sweep.trn_loss = trn_loss
-        sweep.tst_error = tst_error
-        sweep.tst_loss = tst_loss
+        # trn_error, trn_loss, trn_vals = epoch_ce(args, train_loader, model, epoch=-1, device=args.device, opt=None)
+        # if verbose: print('Train Error:', trn_error, trn_loss)
+        # tst_error, tst_loss, tst_vals = epoch_ce(args, test_loader, model, epoch=-1, device=args.device, opt=None)
+        # if verbose: print('Test  Error:', tst_error, tst_loss)
+        # sweep.trn_error = trn_error
+        # sweep.trn_loss = trn_loss
+        # sweep.tst_error = tst_error
+        # sweep.tst_loss = tst_loss
 
     if put_in_sweep:
         sweep.Xtrn = Xtrn

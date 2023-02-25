@@ -150,3 +150,4 @@ cython_debug/
 settings.py
 data
 results
+*.png

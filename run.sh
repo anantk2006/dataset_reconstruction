@@ -11,6 +11,7 @@ TRAIN_EVALUATE_RATE=$6
 
 WORLD_SIZE=$7
 AVG_INTERVAl=$8
+THRES=$9
 
 
 
@@ -43,11 +44,14 @@ do
         --train_epochs=$TRAIN_EPOCHS \
         --train_lr=$TRAIN_LR \
         --train_evaluate_rate=$TRAIN_EVALUATE_RATE \
+        --train_to_loss=true \
+        --train_threshold=$THRES \
         --rank=$RANK \
         --num_clients=$WORLD_SIZE \
         --init_method=$SHAREDFILE \
         --avg_interval=$AVG_INTERVAl \
         --seed=$i &
+    
 
     #pids="${pids} $!"
     

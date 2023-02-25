@@ -106,7 +106,10 @@ def train(args, train_loader, test_loader, val_loader, model):
     #         "========================\n"
     #     )
     #     os.remove(sharedfile_path)
-    if args.is_federated: dist.init_process_group(backend="nccl", rank=args.rank, world_size=args.num_clients, init_method=args.init_method)
+    if args.is_federated: 
+        print("Moment of truth")
+        dist.init_process_group(backend="nccl", rank=args.rank, world_size=args.num_clients, init_method=args.init_method)
+        print("Hallelujah")
     
     optimizer = torch.optim.SGD(model.parameters(), lr=args.train_lr)
     print('Model:')
@@ -138,7 +141,7 @@ def train(args, train_loader, test_loader, val_loader, model):
                 
                 dist.barrier()
                 average_model(args.num_clients, model)
-              
+                
                 iters = 0
             t_total+= y.numel()
             x, y, model = x.cuda(), y.cuda(), model.cuda()
@@ -159,28 +162,36 @@ def train(args, train_loader, test_loader, val_loader, model):
         train_error = total_err.avg
         output = p.data
 
-
+        train_loss = torch.Tensor([train_loss]).cuda()
         if args.is_federated:
-            dist.reduce(torch.Tensor([train_loss]), dst=0, op=dist.ReduceOp.SUM)
+            
+            dist.barrier()
+            
+            dist.reduce(train_loss, dst=0, op=dist.ReduceOp.SUM)
             train_loss /= args.num_clients
+            dist.broadcast(train_loss, src=0)
+
         if train_loss<args.train_threshold:
             if args.is_federated:
+                
                 dist.barrier()
+
                 average_model(args.num_clients, model)
             break
         
         
             
 
-        
+        train_l = float(train_loss.item())
         if epoch % args.train_evaluate_rate == 0:
             test_error, test_loss, _ = epoch_ce(args, test_loader, model, args.device, None, None)
             if val_loader is not None:
                 validation_error, validation_loss, _ = epoch_ce(args, val_loader, model, args.device, None, None)
-                print(now(), f'Epoch {epoch}: train-loss = {train_loss:.8g} ; train-error = {train_error:.4g} ; test-loss = {test_loss:.8g} ; test-error = {test_error:.4g} ; validation-loss = {validation_loss:.8g} ; validation-error = {validation_error:.4g} ; p-std = {output.abs().std()}; p-val = {output.abs().mean()}')
+                
+                print(now(), f'Epoch {epoch}: train-loss = {train_l:.8g} ; train-error = {train_error:.4g} ; test-loss = {test_loss:.8g} ; test-error = {test_error:.4g} ; validation-loss = {validation_loss:.8g} ; validation-error = {validation_error:.4g} ; p-std = {output.abs().std()}; p-val = {output.abs().mean()}')
             else:
                 print(now(),
-                      f'Epoch {epoch}: train-loss = {train_loss:.8g} ; train-error = {train_error:.4g} ; test-loss = {test_loss:.8g} ; test-error = {test_error:.4g} ; p-std = {output.abs().std()}; p-val = {output.abs().mean()}')
+                      f'Epoch {epoch}: train-loss = {train_l:.8g} ; train-error = {train_error:.4g} ; test-loss = {test_loss:.8g} ; test-error = {test_error:.4g} ; p-std = {output.abs().std()}; p-val = {output.abs().mean()}')
 
             if args.wandb_active:
                 wandb.log({"epoch": epoch, "train loss": train_loss, 'train error': train_error, 'p-val':output.abs().mean(), 'p-std': output.abs().std()})
@@ -188,7 +199,7 @@ def train(args, train_loader, test_loader, val_loader, model):
                     wandb.log({'validation loss': validation_loss, 'validation error': validation_error})
                 wandb.log({'test loss': test_loss, 'test error': test_error})
 
-        if np.isnan(train_loss):
+        if np.isnan(train_l):
             raise ValueError('Optimizer diverged')
 
         
@@ -198,8 +209,11 @@ def train(args, train_loader, test_loader, val_loader, model):
         
 
     print(now(), 'ENDED TRAINING')
-    if args.is_federated: average_model(args.num_clients, model)
-    iters = 0
+    if args.is_federated: 
+        print("final agg")
+        dist.barrier()
+        average_model(args.num_clients, model)
+    print(f"{args.rank} made it to end")
             
     return model
 
@@ -292,16 +306,18 @@ def setup_args(args):
     args.datasets_dir = datasets_dir
         
     args.device = torch.device(f'cuda:{args.rank}' if torch.cuda.is_available() else 'cpu')
+    args.results_base_dir = results_base_dir
+    if args.pretrained_model_path:
+        args.pretrained_model_path = os.path.join(models_dir, args.pretrained_model_path)
+    args.model_name = f'{args.problem}_d{args.data_per_class_train}'
+    if args.proj_name:
+        args.model_name += f'_{args.proj_name}'
+    
     if args.rank == 0:
         
 
         
-        args.results_base_dir = results_base_dir
-        if args.pretrained_model_path:
-            args.pretrained_model_path = os.path.join(models_dir, args.pretrained_model_path)
-        args.model_name = f'{args.problem}_d{args.data_per_class_train}'
-        if args.proj_name:
-            args.model_name += f'_{args.proj_name}'
+        
 
     
 
@@ -311,15 +327,13 @@ def setup_args(args):
 
         if args.wandb_active:
             args.output_dir = wandb.run.dir
-        else:
-            import dateutil.tz
-            timestamp = datetime.datetime.now(dateutil.tz.tzlocal()).strftime('%Y_%m_%d_%H_%M_%S')
-            run_name = f'{timestamp}_{np.random.randint(1e5, 1e6)}_{args.model_name}'
-            args.output_dir = os.path.join(args.results_base_dir, run_name)
-        print('OUTPUT_DIR:', args.output_dir)
-
         args.wandb_base_path = './'
-
+    import dateutil.tz
+    timestamp = datetime.datetime.now(dateutil.tz.tzlocal()).strftime('%Y_%m_%d_%H')
+    run_name = f'{timestamp}_{args.model_name}'
+    args.output_dir = os.path.join(args.results_base_dir, run_name)
+    print('OUTPUT_DIR:', args.output_dir)
+    
     return args
 
 
@@ -333,7 +347,9 @@ def main_train(args, train_loader, test_loader, val_loader):
     trained_model = train(args, train_loader, test_loader, val_loader, model)
     if args.rank==0 and args.train_save_model:
         save_weights(args.output_dir, trained_model, ext_text=args.model_name)
-
+    for i in range(args.num_clients):
+        if args.rank == i:
+            torch.save(train_loader, args.output_dir + f"/x/train_{args.rank}.pt")
 
 def main_reconstruct(args, train_loader):
     print('USING PRETRAINED MODEL AT:', args.pretrained_model_path)
