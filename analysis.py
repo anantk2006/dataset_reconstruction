@@ -47,6 +47,7 @@ def find_nearest_neighbour(X, x0, search='ncc', vote='mean', use_bb=True, nn_thr
         D = l2_dist(yyy, xxx, div_dim=True)
     if search == 'ncc':
         D = ncc_dist(yyy, xxx, div_dim=True)
+        
     elif search == 'ncc2':
         x2search = torch.nn.functional.interpolate(xxx, scale_factor=1 / 2, mode='bicubic', align_corners=False)
         y2search = torch.nn.functional.interpolate(yyy, scale_factor=1 / 2, mode='bicubic', align_corners=False)
@@ -59,7 +60,7 @@ def find_nearest_neighbour(X, x0, search='ncc', vote='mean', use_bb=True, nn_thr
         D_ssim = get_ssim_all(yyy, xxx)
         D_dssim = (1 - D_ssim)/2
         D = D_dssim
-
+ 
     # Only consider Best-Bodies
     if use_bb:
         bb_mask = D.mul(-100000000).softmax(dim=0).mul(10).round().div(10).round()
@@ -67,7 +68,7 @@ def find_nearest_neighbour(X, x0, search='ncc', vote='mean', use_bb=True, nn_thr
         D[bb_mask != 1] = torch.inf
 
     dists, idxs = D.sort(dim=1, descending=False)
-
+    
     # yy = yyy
     if vote == 'min' or vote is None:
         xx = xxx[idxs[:, 0]]
@@ -102,6 +103,7 @@ def find_nearest_neighbour(X, x0, search='ncc', vote='mean', use_bb=True, nn_thr
             xs.append(x_voted)
         xx = torch.cat(xs, dim=0).clone()
 
+   
     if ret_idxs:
         return xx, idxs[:, 0]
 
@@ -136,13 +138,25 @@ def sort_by_metric(xx, yy, sort='ssim'):
         dists = get_ssim_pairs_kornia(xx, yy)
         dssim = (1 - dists) / 2
         _, sort_idxs = dists.sort(descending=True)
-        print(_.mean(), _[:50].mean())
+        
+        # d = torch.zeros(size = (1000,))
+        # setd = set()        
+        # for ind, val in enumerate(sort_idxs):
+        #     if val in setd:
+        #         continue
+        #     else:
+        #         d[val] = ind
+            
+        
+        print(f"averages for {sort}",_.mean(), _[:50].mean())
     elif sort == 'ncc':
         dists = (normalize_batch(xx) - normalize_batch(yy)).reshape(xx.shape[0], -1).norm(dim=1)
         _, sort_idxs = dists.sort()
+        
     elif sort == 'l2':
         dists = (xx - yy).reshape(xx.shape[0], -1).norm(dim=1)
         _, sort_idxs = dists.sort()
+        print(f"averages for {sort}", _.mean(), _[:50].mean())
     elif sort == 'psnr':
         dists = psnr(xx, yy)
         _, sort_idxs = dists.sort(descending=True)
