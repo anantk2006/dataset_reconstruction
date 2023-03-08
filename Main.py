@@ -25,7 +25,8 @@ os.environ['QT_QPA_PLATFORM'] = 'offscreen'
 def get_loss_ce(args, model, x, y):
     p = model(x)
     p = p.view(-1)
-    loss = torch.nn.BCEWithLogitsLoss()(p, y)
+    
+    loss = torch.nn.BCEWithLogitsLoss()(p, y.to(torch.float32))
     return loss, p
 
 
@@ -86,6 +87,7 @@ def average_model(world_size, model):
         dist.broadcast(param.data, src=0)
 
 def train(args, train_loader, test_loader, val_loader, model):
+    
     if args.is_federated:
         sys.stdout = sys.__stdout__
         print(args.rank)
@@ -106,10 +108,7 @@ def train(args, train_loader, test_loader, val_loader, model):
     #         "========================\n"
     #     )
     #     os.remove(sharedfile_path)
-    if args.is_federated: 
-        print("Moment of truth")
-        dist.init_process_group(backend="nccl", rank=args.rank, world_size=args.num_clients, init_method=args.init_method)
-        print("Hallelujah")
+    
     
     optimizer = torch.optim.SGD(model.parameters(), lr=args.train_lr)
     print('Model:')
@@ -117,18 +116,26 @@ def train(args, train_loader, test_loader, val_loader, model):
     
     # Handle Reduce Mean
     if args.data_reduce_mean:
-        for gen in train_loader:
-            print('Reducing Trainset-Mean from Trainset and Testset')
-            Xtrn, Ytrn = gen
+        gen = []
+        test_gen = []
+        max_batch = args.data_amount//args.batch_size
+        for i, (x,y) in enumerate(train_loader):
+            if i == max_batch: break
+            #print('Reducing Trainset-Mean from Trainset and Testset')
+            Xtrn, Ytrn = next(iter(train_loader))
             ds_mean = Xtrn.mean(dim=0, keepdims=True)
             Xtrn = Xtrn - ds_mean
-            train_loader = [(Xtrn, Ytrn)]
+            gen.append((Xtrn, Ytrn))
 
             Xtst, Ytst = next(iter(test_loader))
             Xtst = Xtst - ds_mean
-            test_loader = [(Xtst, Ytst)]
+            test_gen.append((Xtst, Ytst))
+        train_loader = gen
+        test_loader = test_gen
+        
     iters = 0
     t_total = 0
+    print(next(iter(train_loader))[0].shape, next(iter(test_loader))[0].shape)
     torch.set_printoptions(precision=20)
     for epoch in range(args.train_epochs + 1):
         # if args.train_SGD:
@@ -137,6 +144,7 @@ def train(args, train_loader, test_loader, val_loader, model):
         total_loss, total_err = AverageValueMeter(), AverageValueMeter()
         model.train()
         for i, (x, y) in enumerate(train_loader):
+            
             if args.is_federated and iters > args.avg_interval:
                 
                 dist.barrier()
@@ -215,7 +223,7 @@ def train(args, train_loader, test_loader, val_loader, model):
         average_model(args.num_clients, model)
     print(f"{args.rank} made it to end")
             
-    return model
+    return model, train_loader
 
 
 ###############################################################################
@@ -226,6 +234,7 @@ def data_extraction(args, dataset_loader, model):
 
     # we use dataset only for shapes and post-visualization (adding mean if it was reduced)
     x0, y0 = next(iter(dataset_loader))
+    x0, y0 = x0.to(model.layers[0].weight.device), y0.to(model.layers[0].weight.device)
     print('X:', x0.shape, x0.device)
     print('y:', y0.shape, y0.device)
     print('model device:', model.layers[0].weight.device)
@@ -344,7 +353,7 @@ def main_train(args, train_loader, test_loader, val_loader):
         wandb.watch(model)
     
     
-    trained_model = train(args, train_loader, test_loader, val_loader, model)
+    trained_model, train_loader = train(args, train_loader, test_loader, val_loader, model)
     if args.rank==0 and args.train_save_model:
         save_weights(args.output_dir, trained_model, ext_text=args.model_name)
     for i in range(args.num_clients):
@@ -382,7 +391,10 @@ def main():
     print('ARGS:')
     print(args)
     print('*'*100)
-
+    if args.is_federated: 
+        print("Moment of truth")
+        dist.init_process_group(backend="nccl", rank=args.rank, world_size=args.num_clients, init_method=args.init_method)
+        print("Hallelujah")
     
     if args.precision == 'double':
         torch.set_default_dtype(torch.float64)
@@ -394,6 +406,7 @@ def main():
     print('DEFAULT DTYPE:', torch.get_default_dtype())
 
     train_loader, test_loader, val_loader = setup_problem(args)
+    
 
     # train
     if args.run_mode == 'train':

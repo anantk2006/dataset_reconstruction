@@ -188,13 +188,13 @@ def sweep_get_data_model(sweep, datapath, verbose=True, run_train_test=False, pu
         Xtrn = torch.cat(Xtrn, dim = 0)
         Ytrn = torch.cat(Ytrn, dim = 0)
     else:
-        Xtrn, Ytrn = next(iter(torch.load(f"{datapath}_0.pt")))    
+        Xtrn, Ytrn = next(iter(torch.load(f"{datapath}_0.pt", map_location=torch.device("cuda:0"))))    
         ds_mean = Xtrn.mean(dim=0, keepdims=True).data
         Xtrn = Xtrn.data - ds_mean.data
 
     # test set
     Xtst, Ytst = next(iter(test_loader))
-    Xtst = Xtst - ds_mean
+    Xtst = Xtst.to(torch.device("cuda:0")) - ds_mean.to(torch.device("cuda:0"))
 
     # verify balancedness
     if verbose: print('BALNACENESS TRN:', {c: Ytrn[Ytrn == c].shape[0] for c in range(args.num_classes)})
@@ -203,7 +203,7 @@ def sweep_get_data_model(sweep, datapath, verbose=True, run_train_test=False, pu
     # get model
     model = create_model(args, extraction=False)
     
-    model = common_utils.common.load_weights(model, args.pretrained_model_path, device=args.device)
+    model = common_utils.common.load_weights(model, args.pretrained_model_path.replace("800", "250"), device=args.device)
     model.eval()
     # get model's weights
     W = model.layers[0].weight

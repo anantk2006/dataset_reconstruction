@@ -17,12 +17,12 @@ from analysis import find_nearest_neighbour, scale, sort_by_metric
 
 # read sweep parameters
 paths = [
-     "./results/2023_02_24_22_mnist_odd_even_d250/x/49000_x.pth",
-    f'./results/2023_02_24_21_mnist_odd_even_d250_mnist_odd_even/x/train'
+     "./results/2023_03_07_02_mnist_odd_even_d250/x/49000_x.pth",
+    f'./results/2023_03_07_01_mnist_odd_even_d250_mnist_odd_even/x/train'
 ]
 sweep = common_utils.common.load_dict_to_obj("./reconstructions/mnist_odd_even/sweep.txt")
 # read model, data, and whatever needed
-args, Xtrn, Ytrn, ds_mean, W, model = analysis_utils.sweep_get_data_model(sweep, paths[1], put_in_sweep=True, run_train_test=True, is_federated = True)
+args, Xtrn, Ytrn, ds_mean, W, model = analysis_utils.sweep_get_data_model(sweep, paths[1], put_in_sweep=True, run_train_test=True, is_federated = False)
 #print(ds_mean)
 
 
@@ -73,7 +73,7 @@ values = model(Xtrn).data
 # Plot
 # color_by_labels = Ytrn[sort_idxs]
 color_by_labels = None
-figpath="images/reconstructionsfed"
+figpath="images/reconstructionsnonfed"
 yya = torch.minimum(yya, torch.ones_like(xxa))
 yya = torch.maximum(yya, torch.zeros_like(xxa))
 yyb = torch.minimum(yyb, torch.ones_like(xxa))
