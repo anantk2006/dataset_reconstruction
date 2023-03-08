@@ -73,7 +73,7 @@ def get_balanced_data(args, data_loader, data_amount):
     return x0, y0
 
 
-def get_data_loader(dataset_name, dataroot, batch_size, val_ratio, world_size, rank, args, heterogeneity=0, extra_bs=None, num_workers=1, small=False):
+def get_data_loader(dataset_name, dataroot, batch_size, val_ratio, world_size, rank, args, heterogeneity=0, num_workers=1, small=False):
     """
     Args:
         dataset_name (str): the name of the dataset to use, currently only
@@ -85,7 +85,6 @@ def get_data_loader(dataset_name, dataroot, batch_size, val_ratio, world_size, r
         rank (int): the rank of this process.
         heterogeneity (float): dissimilarity between data distribution across clients.
             Between 0 and 1.
-        extra_bs (int): Batch size for extra data loader.
         small (bool): Whether to use miniature dataset.
     Outputs:
         iterators over training, validation, and test data.
@@ -128,8 +127,7 @@ def get_data_loader(dataset_name, dataroot, batch_size, val_ratio, world_size, r
         transform_test = transforms.Compose([transforms.ToTensor(),
                                              normalize])
     elif dataset_name in ['MNIST', 'FashionMNIST']:
-        transform_train = transforms.Compose([transforms.ToTensor(),
-                                    ])
+        transform_train = transforms.ToTensor()
         transform_test = transform_train
 
     # load and split the train dataset into train and validation and 
@@ -224,16 +222,6 @@ def get_data_loader(dataset_name, dataroot, batch_size, val_ratio, world_size, r
         pin_memory=True,
     )
 
-    extra_loader = None
-    if extra_bs is not None:
-        extra_loader = DataLoader(
-            train_set,
-            batch_size=extra_bs,
-            sampler=SubsetRandomSampler(local_train_idx),
-            num_workers=num_workers,
-            pin_memory=True,
-        )
-
     test_sampler = SubsetRandomSampler(local_test_idx)
     test_loader = DataLoader(
         test_set,
@@ -242,8 +230,13 @@ def get_data_loader(dataset_name, dataroot, batch_size, val_ratio, world_size, r
         num_workers=num_workers,
         pin_memory=True,
     )
+
+    # TODO: Convert train_loader, test_loader, and valid_loader to the format expected
+    # by train(). Each of these loaders should be a list with a single element that is a
+    # tuple with two elements: one tensor for inputs and one tensor for labels.
+    pass
     
-    return (train_loader, test_loader, valid_loader, extra_loader)
+    return train_loader, test_loader, valid_loader
 
 
 def get_label_indices(dataset_name, dset, num_labels):
@@ -301,6 +294,6 @@ def get_dataloader(args):
     args.data_use_test = True
     args.data_test_amount = 1000
     args.batch_size = 100
-    train_loader, test_loader, val_loader, _ = get_data_loader("MNIST", "data", args.batch_size, 0.1, args.num_clients, args.rank, args, heterogeneity = 0)
+    train_loader, test_loader, _ = get_data_loader("MNIST", "data", args.batch_size, 0.0, args.num_clients, args.rank, args, heterogeneity = 0)
     
-    return train_loader, test_loader, val_loader
+    return train_loader, test_loader, None

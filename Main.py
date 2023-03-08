@@ -116,6 +116,8 @@ def train(args, train_loader, test_loader, val_loader, model):
     
     # Handle Reduce Mean
     if args.data_reduce_mean:
+
+        # TODO: Revert back to previous version.
         gen = []
         test_gen = []
         max_batch = args.data_amount//args.batch_size
