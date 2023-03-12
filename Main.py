@@ -113,27 +113,22 @@ def train(args, train_loader, test_loader, val_loader, model):
     optimizer = torch.optim.SGD(model.parameters(), lr=args.train_lr)
     print('Model:')
     print(model)
-    
+    print(train_loader[0][0].shape, train_loader[0][1].shape, len(train_loader))
+    print(test_loader[0][0].shape, test_loader[0][1].shape, len(test_loader))
+
     # Handle Reduce Mean
     if args.data_reduce_mean:
 
         # TODO: Revert back to previous version.
-        gen = []
-        test_gen = []
-        max_batch = args.data_amount//args.batch_size
-        for i, (x,y) in enumerate(train_loader):
-            if i == max_batch: break
-            #print('Reducing Trainset-Mean from Trainset and Testset')
-            Xtrn, Ytrn = next(iter(train_loader))
-            ds_mean = Xtrn.mean(dim=0, keepdims=True)
-            Xtrn = Xtrn - ds_mean
-            gen.append((Xtrn, Ytrn))
+        print('Reducing Trainset-Mean from Trainset and Testset')
+        Xtrn, Ytrn = next(iter(train_loader))
+        ds_mean = Xtrn.mean(dim=0, keepdims=True)
+        Xtrn = Xtrn - ds_mean
+        train_loader = [(Xtrn, Ytrn)]
 
-            Xtst, Ytst = next(iter(test_loader))
-            Xtst = Xtst - ds_mean
-            test_gen.append((Xtst, Ytst))
-        train_loader = gen
-        test_loader = test_gen
+        Xtst, Ytst = next(iter(test_loader))
+        Xtst = Xtst - ds_mean
+        test_loader = [(Xtst, Ytst)]
         
     iters = 0
     t_total = 0
@@ -340,7 +335,7 @@ def setup_args(args):
             args.output_dir = wandb.run.dir
         args.wandb_base_path = './'
     import dateutil.tz
-    timestamp = datetime.datetime.now(dateutil.tz.tzlocal()).strftime('%Y_%m_%d_%H')
+    timestamp = datetime.datetime.now(dateutil.tz.tzlocal()).strftime('%Y_%m_%d_%H_%M')
     run_name = f'{timestamp}_{args.model_name}'
     args.output_dir = os.path.join(args.results_base_dir, run_name)
     print('OUTPUT_DIR:', args.output_dir)

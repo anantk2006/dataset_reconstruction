@@ -20,6 +20,24 @@ def load_bound_dataset(dataset, batch_size, shuffle=False, start=None, end=None,
     dataset = _bound_dataset(dataset, start, end)
     return torch.utils.data.DataLoader(dataset, batch_size, shuffle=shuffle, **kwargs)
 
+def load_mnist_data(args):
+    # Get Train Set
+    data_loader = load_mnist(root=args.datasets_dir, batch_size=100, train=True, shuffle=False, start=0, end=50000)
+    x0, y0 = get_balanced_data(args, data_loader, args.data_amount)
+
+    # Get Test Set
+    print('LOADING TESTSET')
+    assert not args.data_use_test or (args.data_use_test and args.data_test_amount >= 2), f"args.data_use_test={args.data_use_test} but args.data_test_amount={args.data_test_amount}"
+    data_loader = load_mnist(root=args.datasets_dir, batch_size=100, train=False, shuffle=False, start=0, end=10000)
+    x0_test, y0_test = get_balanced_data(args, data_loader, args.data_test_amount)
+
+    # move to cuda and double
+    x0, y0 = move_to_type_device(x0, y0, args.device)
+    x0_test, y0_test = move_to_type_device(x0_test, y0_test, args.device)
+
+    print(f'BALANCE: 0: {y0[y0 == 0].shape[0]}, 1: {y0[y0 == 1].shape[0]}')
+
+    return [(x0, y0)], [(x0_test, y0_test)], None
 
 def fetch_mnist(root, train=False, transform=None, target_transform=None):
     transform = transform if transform is not None else torchvision.transforms.ToTensor()
@@ -127,7 +145,8 @@ def get_data_loader(dataset_name, dataroot, batch_size, val_ratio, world_size, r
         transform_test = transforms.Compose([transforms.ToTensor(),
                                              normalize])
     elif dataset_name in ['MNIST', 'FashionMNIST']:
-        transform_train = transforms.ToTensor()
+        transform_train =  transforms.Compose([transforms.ToTensor(),
+                                             normalize])
         transform_test = transform_train
 
     # load and split the train dataset into train and validation and 
@@ -234,8 +253,26 @@ def get_data_loader(dataset_name, dataroot, batch_size, val_ratio, world_size, r
     # TODO: Convert train_loader, test_loader, and valid_loader to the format expected
     # by train(). Each of these loaders should be a list with a single element that is a
     # tuple with two elements: one tensor for inputs and one tensor for labels.
-    pass
+    train_list_x = []
+    train_list_y = []
+    max_batch = args.data_amount//args.batch_size
     
+    
+    for i, (x,y) in enumerate(train_loader):
+        if i==max_batch: break
+        train_list_x.append(x)
+        train_list_y.append(y)
+    train_loader = [(torch.cat(train_list_x, dim = 0), torch.cat(train_list_y, dim = 0))]
+
+    test_list_x = []
+    test_list_y = []
+    max_batch = args.data_test_amount//args.batch_size
+    for i, (x,y) in enumerate(test_loader):
+        if i==max_batch: break
+        test_list_x.append(x)
+        test_list_y.append(y)
+    test_loader = [(torch.cat(test_list_x, dim = 0), torch.cat(test_list_y, dim = 0))]
+   
     return train_loader, test_loader, valid_loader
 
 
@@ -255,29 +292,7 @@ def get_label_indices(dataset_name, dset, num_labels):
     
     return label_indices
 
-def get_balanced_data(args, data_loader, data_amount):
-    print('BALANCING DATASET...')
-    # get balanced data
-    data_amount_per_class = data_amount // 2
 
-    labels_counter = {1: 0, 0: 0}
-    x0, y0 = [], []
-    got_enough = False
-    for bx, by in data_loader:
-        by = create_labels(by)
-        for i in range(len(bx)):
-            if labels_counter[int(by[i])] < data_amount_per_class:
-                labels_counter[int(by[i])] += 1
-                x0.append(bx[i])
-                y0.append(by[i])
-            if (labels_counter[0] >= data_amount_per_class) and (labels_counter[1] >= data_amount_per_class):
-                got_enough = True
-                break
-        if got_enough:
-            break
-    list_dl = list(zip(x0, y0))
-    dl = DataLoader(list_dl, shuffle=True, batch_size=args.batch_size)
-    return dl
     
 
 def get_dataloader(args):
@@ -294,6 +309,6 @@ def get_dataloader(args):
     args.data_use_test = True
     args.data_test_amount = 1000
     args.batch_size = 100
-    train_loader, test_loader, _ = get_data_loader("MNIST", "data", args.batch_size, 0.0, args.num_clients, args.rank, args, heterogeneity = 0)
-    
+    #train_loader, test_loader, _ = get_data_loader("MNIST", "data", args.batch_size, 0.0, args.num_clients, args.rank, args, heterogeneity = 0)
+    train_loader, test_loader, _ = load_mnist_data(args)
     return train_loader, test_loader, None

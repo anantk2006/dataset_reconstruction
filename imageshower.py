@@ -17,8 +17,8 @@ from analysis import find_nearest_neighbour, scale, sort_by_metric
 
 # read sweep parameters
 paths = [
-     "./results/2023_03_07_02_mnist_odd_even_d250/x/49000_x.pth",
-    f'./results/2023_03_07_01_mnist_odd_even_d250_mnist_odd_even/x/train'
+     "./results/2023_03_09_22_08_mnist_odd_even_d250/x/49000_x.pth",
+    f'./results/2023_03_09_21_30_mnist_odd_even_d250_mnist_odd_even/x/train'
 ]
 sweep = common_utils.common.load_dict_to_obj("./reconstructions/mnist_odd_even/sweep.txt")
 # read model, data, and whatever needed
