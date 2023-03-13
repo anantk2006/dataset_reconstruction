@@ -118,8 +118,7 @@ def train(args, train_loader, test_loader, val_loader, model):
 
     # Handle Reduce Mean
     if args.data_reduce_mean:
-
-        # TODO: Revert back to previous version.
+        
         print('Reducing Trainset-Mean from Trainset and Testset')
         Xtrn, Ytrn = next(iter(train_loader))
         ds_mean = Xtrn.mean(dim=0, keepdims=True)

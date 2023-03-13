@@ -17,12 +17,12 @@ from analysis import find_nearest_neighbour, scale, sort_by_metric
 
 # read sweep parameters
 paths = [
-     "./results/2023_03_09_22_08_mnist_odd_even_d250/x/49000_x.pth",
-    f'./results/2023_03_09_21_30_mnist_odd_even_d250_mnist_odd_even/x/train'
+     "./results/2023_03_12_12_04_mnist_odd_even_d250_mnist_odd_even/x/train",
+    f'./results/2023_03_12_13_38_mnist_odd_even_d250/x/49000_x.pth'
 ]
 sweep = common_utils.common.load_dict_to_obj("./reconstructions/mnist_odd_even/sweep.txt")
 # read model, data, and whatever needed
-args, Xtrn, Ytrn, ds_mean, W, model = analysis_utils.sweep_get_data_model(sweep, paths[1], put_in_sweep=True, run_train_test=True, is_federated = False)
+args, Xtrn, Ytrn, ds_mean, W, model = analysis_utils.sweep_get_data_model(sweep, paths[0], put_in_sweep=True, run_train_test=True, is_federated = False)
 #print(ds_mean)
 
 
@@ -33,7 +33,7 @@ args, Xtrn, Ytrn, ds_mean, W, model = analysis_utils.sweep_get_data_model(sweep,
 # Here we put reconstructed data from two diffferent runs.
 # you can use both of them or just one. (uncomment relevant parts)
 
-X = torch.load(paths[0])
+X = torch.load(paths[1])
 
 print(X.shape)
 
