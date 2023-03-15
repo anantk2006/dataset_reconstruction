@@ -171,9 +171,9 @@ def sweep_get_data_model(sweep, datapath, verbose=True, run_train_test=False, pu
     args = get_args(l)
     args = setup_args(args)
     if verbose: print(args)
-
+    args.heterogeneity = 0
     train_loader, test_loader, val_loader = setup_problem(args)
-
+    
     # train set
     print(args)
     if is_federated:
@@ -188,13 +188,14 @@ def sweep_get_data_model(sweep, datapath, verbose=True, run_train_test=False, pu
         Xtrn = torch.cat(Xtrn, dim = 0)
         Ytrn = torch.cat(Ytrn, dim = 0)
     else:
-        Xtrn, Ytrn = next(iter(torch.load(f"{datapath}_0.pt")))    
+        Xtrn, Ytrn = next(iter(torch.load(f"{datapath}_0.pt", map_location=torch.device("cuda:0"))))    
         ds_mean = Xtrn.mean(dim=0, keepdims=True).data
         Xtrn = Xtrn.data - ds_mean.data
-
+    print(Xtrn.shape)
+    
     # test set
     Xtst, Ytst = next(iter(test_loader))
-    Xtst = Xtst - ds_mean
+    Xtst = Xtst.to(torch.device("cuda:0")) - ds_mean
 
     # verify balancedness
     if verbose: print('BALNACENESS TRN:', {c: Ytrn[Ytrn == c].shape[0] for c in range(args.num_classes)})

@@ -87,6 +87,7 @@ def get_args(*args):
     parser.add_argument("--init_method", default = "/home/akhande/dataset_reconstruction/", type=str, help = "folder where comms go")
     parser.add_argument("--avg_interval", default = "100", type=int, help = "iteration interval between consecutive averaging")
     parser.add_argument("--rank", default = 0, type=int, help = "rank of process here")
+    parser.add_argument("--heterogeneity", default = 0, type=float, help = "percent of each clients dataset to be heterogenous")
 
     if not isinstance(args, list):
         args = args[0]

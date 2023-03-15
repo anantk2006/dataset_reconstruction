@@ -45,7 +45,7 @@
                 "value": "[0.001,0.001]"
             },
             "pretrained_model_path": {
-                "value": "weights-mnist_odd_even_d250_mnist_odd_even.pth"
+                "value": "weights-mnist_odd_even_d75_mnist_odd_even.pth"
             },
             "problem": {
                 "value": "mnist_odd_even"
@@ -61,6 +61,6 @@
     },
     "full_name": "mnist_odd_even_uvl74ek9",
     "id": "uvl74ek9",
-    "pretrained_model_path": "weights-mnist_odd_even_d250_mnist_odd_even.pth",
+    "pretrained_model_path": "weights-mnist_odd_even_d75_mnist_odd_even.pth",
     "problem": "mnist_odd_even"
 }

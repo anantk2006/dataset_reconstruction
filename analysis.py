@@ -143,6 +143,7 @@ def sort_by_metric(xx, yy, sort='ssim'):
     elif sort == 'l2':
         dists = (xx - yy).reshape(xx.shape[0], -1).norm(dim=1)
         _, sort_idxs = dists.sort()
+        print(_.mean(), _[:50].mean())
     elif sort == 'psnr':
         dists = psnr(xx, yy)
         _, sort_idxs = dists.sort(descending=True)

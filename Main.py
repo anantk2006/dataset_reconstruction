@@ -106,10 +106,7 @@ def train(args, train_loader, test_loader, val_loader, model):
     #         "========================\n"
     #     )
     #     os.remove(sharedfile_path)
-    if args.is_federated: 
-        print("Moment of truth")
-        dist.init_process_group(backend="nccl", rank=args.rank, world_size=args.num_clients, init_method=args.init_method)
-        print("Hallelujah")
+    
     
     optimizer = torch.optim.SGD(model.parameters(), lr=args.train_lr)
     print('Model:')
@@ -137,6 +134,7 @@ def train(args, train_loader, test_loader, val_loader, model):
         total_loss, total_err = AverageValueMeter(), AverageValueMeter()
         model.train()
         for i, (x, y) in enumerate(train_loader):
+           
             if args.is_federated and iters > args.avg_interval:
                 
                 dist.barrier()
@@ -378,6 +376,10 @@ def main():
     if args.rank != 0:
         dn = open(os.devnull, "w")
         sys.stdout = dn
+    if args.is_federated: 
+        print("Moment of truth")
+        dist.init_process_group(backend="nccl", rank=args.rank, world_size=args.num_clients, init_method=args.init_method)
+        print("Hallelujah")
     create_dirs_save_files(args)
     print('ARGS:')
     print(args)

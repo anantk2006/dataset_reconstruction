@@ -12,6 +12,7 @@ TRAIN_EVALUATE_RATE=$6
 WORLD_SIZE=$7
 AVG_INTERVAl=$8
 THRES=$9
+HETERO=${10}
 
 
 
@@ -50,6 +51,7 @@ do
         --num_clients=$WORLD_SIZE \
         --init_method=$SHAREDFILE \
         --avg_interval=$AVG_INTERVAl \
+        --heterogeneity=$HETERO \
         --seed=$i &
     
 
