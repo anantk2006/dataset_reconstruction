@@ -24,7 +24,6 @@ SHAREDFILE="file:///home/akhande/dataset_reconstruction/federatedfiles/sharedfil
 pids=""
 for i in {0..7}
 do
-    #echo dddddddddddddddddddddddddddddddddddddddddddddd
     # if [ $i -eq 0 ]
     # then
     #     continue

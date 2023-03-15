@@ -88,6 +88,8 @@ def load_mnist_data(args):
     print(f'BALANCE: 0: {y0[y0 == 0].shape[0]}, 1: {y0[y0 == 1].shape[0]}')
 
     return [(x0, y0)], [(x0_test, y0_test)], None
+
+
 def get_data(dataset_name, dataroot, batch_size, val_ratio, world_size, rank, args, heterogeneity=0, num_workers=1, small=False):
     """
     Args:
@@ -142,13 +144,12 @@ def get_data(dataset_name, dataroot, batch_size, val_ratio, world_size, rank, ar
         transform_test = transforms.Compose([transforms.ToTensor(),
                                              normalize])
     elif dataset_name in ['MNIST', 'FashionMNIST']:
-        transform_train =  transforms.Compose([transforms.ToTensor(),
-                                             ])
+        transform_train =  transforms.Compose([transforms.ToTensor()])
         transform_test = transform_train
 
     # load and split the train dataset into train and validation and 
     # deployed to all GPUs.
-    ttransform = lambda x: x%2 
+    ttransform = lambda x: x%2
     train_set = dataset(root=dataroot, train=True,
                         download=True, transform=transform_train, target_transform=transforms.Lambda(ttransform))
     val_set = dataset(root=dataroot, train=True,
@@ -247,12 +248,10 @@ def get_data(dataset_name, dataroot, batch_size, val_ratio, world_size, rank, ar
         pin_memory=True,
     )
 
-   
+    # Reformat data to match the structure expected by reconstruction code.
     train_list_x = []
     train_list_y = []
     max_batch = args.data_amount//batch_size
-    
-    
     for i, (x,y) in enumerate(train_loader):
         if i==max_batch: break
         train_list_x.append(x)
@@ -267,15 +266,16 @@ def get_data(dataset_name, dataroot, batch_size, val_ratio, world_size, rank, ar
         test_list_x.append(x)
         test_list_y.append(y)
     test_loader = [(torch.cat(test_list_x, dim = 0).to(args.device), torch.cat(test_list_y, dim = 0).to(args.device).to(torch.float32))]
-    
+
     return train_loader, test_loader, None
+
+
 def get_label_indices(dataset_name, dset, num_labels):
     """
     Returns a dictionary mapping each label to a list of the indices of elements in
     `dset` with the corresponding label.
     """
-    
-    
+
     label_indices = [[] for _ in range(num_labels)]
     if dataset_name in ["CIFAR10", "CIFAR100", "MNIST"]:
         for idx, label in enumerate(dset.targets):
