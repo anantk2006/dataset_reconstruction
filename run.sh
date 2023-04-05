@@ -28,7 +28,6 @@ PIDS=(1 2 3 4 5 6 7 8)
 # placeholder values
 for i in {0..7}
 do
-    #echo dddddddddddddddddddddddddddddddddddddddddddddd
     # if [ $i -eq 0 ]
     # then
     #     continue
