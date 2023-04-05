@@ -63,7 +63,47 @@ class NeuralNetwork(nn.Module):
             feats = self.activation(feats)
         feats = self.layers[-1](feats)
         return feats
-
+class CNN(nn.Module):
+    def __init__(self, num_layers = 3, problem = "mnist_odd_even"):
+        super(CNN, self).__init__()
+        if problem == "mnist_odd_even":
+            layer1 = nn.Conv2d(
+                in_channels=1,              
+                out_channels=16,            
+                kernel_size=7,              
+                stride=1,                   
+                padding=0, 
+                bias = False                 
+            )
+        elif problem == "cifar10_vehicles_animals":
+            layer1 = nn.Conv2d(
+                in_channels=3,              
+                out_channels=16,            
+                kernel_size=11,              
+                stride=1,                   
+                padding=0, 
+                bias = False
+            )
+        self.layers = nn.ModuleList([         
+            layer1,                              
+            nn.ReLU(),
+            nn.Conv2d(16, 32, 6, 2, 1, bias = False),
+            nn.ReLU(), ]                        
+                                  
+        )
+        for i in range(num_layers-3):
+            self.layers.append(nn.Conv2d(32, 32, 3, 1, 1, bias = False))
+            self.layers.append(nn.ReLU())
+        for layer in [nn.Conv2d(32, 32, 4, 1, 0, bias = False),
+            nn.ReLU(),
+            nn.Flatten(),
+            nn.Linear(32*7*7, 1, bias = False) ]:
+            self.layers.append(layer)
+        self.layers = nn.Sequential(*self.layers)
+        # fully connected layer, output 10 classes
+     
+    def forward(self, x):
+        return self.layers(x)
 
 def create_model(args, extraction):
     if not extraction:
@@ -76,6 +116,8 @@ def create_model(args, extraction):
             input_dim=args.input_dim, hidden_dim_list=args.model_hidden_list, output_dim=args.output_dim,
             activation=activation, use_bias=args.model_use_bias
         )
+    elif args.model_type == "conv":
+         model = CNN(num_layers=args.num_conv_layers, problem=args.problem)
     else:
         raise ValueError(f'No such args.model_type={args.model_type}')
 

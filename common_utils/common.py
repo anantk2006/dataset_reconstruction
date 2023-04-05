@@ -40,17 +40,9 @@ def calc_model_parameters(model):
 
 
 def save_weights(dirpath, model, epoch=None, batch=None, ext_text=None):
-    weights_fname = 'weights'
-    if epoch is not None:
-        weights_fname += '-%d' % epoch
-    if batch is not None:
-        # weights_fname = 'weights-%d-%d-%s.pth' % (epoch, batch, ext_text)
-        weights_fname += '-%d' % batch
-    if ext_text is not None:
-        weights_fname += '-%s' % ext_text
-    weights_fname += '.pth'
+    
 
-    weights_fpath = os.path.join(dirpath, weights_fname)
+    weights_fpath = os.path.join(dirpath, ext_text)
     torch.save({
             'batch': batch,
             'epoch': epoch,

@@ -42,12 +42,17 @@ def diversity_loss(x, min_dist):
 
 def get_trainable_params(args, x0):
     n, c, h, w = x0.shape
-    x = torch.randn(args.extraction_data_amount, c, h, w).to(args.device) * args.extraction_init_scale
+    x = torch.rand(args.extraction_data_amount, c, h, w).to(args.device) * args.extraction_init_scale
+    # x = torch.load("results/mlptest/x/train_0.pt")[0][0]
+    # print(x.max(), x.min(), x.mean())
+    # exit()
+    
     x.requires_grad_(True)
     l = torch.rand(args.extraction_data_amount, 1).to(args.device)
     l.requires_grad_(True)
     opt_x = torch.optim.SGD([x], lr=args.extraction_lr, momentum=0.9)
     opt_l = torch.optim.SGD([l], lr=args.extraction_lambda_lr, momentum=0.9)
+    #opt_l = torch.optim.SGD([l], lr=0.0001)
     return l, opt_l, opt_x, x
 
 

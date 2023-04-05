@@ -13,6 +13,9 @@ WORLD_SIZE=$7
 AVG_INTERVAl=$8
 THRES=$9
 HETERO=${10}
+OUTPUT=${11}
+
+
 
 
 
@@ -21,7 +24,8 @@ SHAREDFILE="file:///home/akhande/dataset_reconstruction/federatedfiles/sharedfil
 
 
 
-pids=""
+PIDS=(1 2 3 4 5 6 7 8)
+# placeholder values
 for i in {0..7}
 do
     #echo dddddddddddddddddddddddddddddddddddddddddddddd
@@ -52,12 +56,22 @@ do
         --init_method=$SHAREDFILE \
         --avg_interval=$AVG_INTERVAl \
         --heterogeneity=$HETERO \
+        --output_dir=$OUTPUT \
+        --model_type=mlp \
         --seed=$i &
+    PIDS[$i]=$!
     
 
     #pids="${pids} $!"
     
 done
+
+for pid in ${!PIDS[@]};
+do 
+    wait -n $pid
+    echo $pid
+done
+
 
 #echo "children:${pids}"
 #wait

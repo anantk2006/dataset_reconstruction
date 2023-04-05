@@ -149,12 +149,13 @@ def get_data(dataset_name, dataroot, batch_size, val_ratio, world_size, rank, ar
     # load and split the train dataset into train and validation and 
     # deployed to all GPUs.
     ttransform = lambda x: x%2 
+    ttransform = transforms.Lambda(ttransform)
     train_set = dataset(root=dataroot, train=True,
-                        download=True, transform=transform_train, target_transform=transforms.Lambda(ttransform))
+                        download=True, transform=transform_train, target_transform=ttransform)
     val_set = dataset(root=dataroot, train=True,
-                      download=True, transform=transform_test, target_transform=transforms.Lambda(ttransform))
+                      download=True, transform=transform_test, target_transform=ttransform)
     test_set = dataset(root=dataroot, train=False,
-                       download=True, transform=transform_test, target_transform=transforms.Lambda(ttransform))
+                       download=True, transform=transform_test, target_transform=ttransform)
 
     # partition the training data into multiple GPUs if needed. Data partitioning to
     # create heterogeneity is performed according to the specifications in
@@ -302,4 +303,7 @@ def get_dataloader(args):
 
     #data_loader = load_mnist_data(args)
     data_loader = get_data("MNIST", "data", args.data_amount, 0, args.num_clients, args.rank, args, heterogeneity=args.heterogeneity)
+    y0 = data_loader[0][0][1]
+    print(f'BALANCE: 0: {y0[y0 == 0].shape[0]}, 1: {y0[y0 == 1].shape[0]}')
+    
     return data_loader

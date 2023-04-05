@@ -111,7 +111,6 @@ def train(args, train_loader, test_loader, val_loader, model):
     optimizer = torch.optim.SGD(model.parameters(), lr=args.train_lr)
     print('Model:')
     print(model)
-    
     # Handle Reduce Mean
     if args.data_reduce_mean:
         for gen in train_loader:
@@ -131,12 +130,15 @@ def train(args, train_loader, test_loader, val_loader, model):
         # if args.train_SGD:
         #     train_error, train_loss, output = epoch_ce_sgd(args, train_loader, model, epoch, args.device, args.train_SGD_batch_size, optimizer)
         # else:
+        
         total_loss, total_err = AverageValueMeter(), AverageValueMeter()
         model.train()
         for i, (x, y) in enumerate(train_loader):
-           
+            
+
+
             if args.is_federated and iters > args.avg_interval:
-                
+             
                 dist.barrier()
                 average_model(args.num_clients, model)
                 
@@ -144,7 +146,7 @@ def train(args, train_loader, test_loader, val_loader, model):
             t_total+= y.numel()
             x, y, model = x.cuda(), y.cuda(), model.cuda()
             loss, p = get_loss_ce(args, model, x, y)
-
+      
             
             optimizer.zero_grad()
             loss.backward()
@@ -203,7 +205,7 @@ def train(args, train_loader, test_loader, val_loader, model):
         
 
         if args.rank ==0 and args.train_save_model_every > 0 and epoch % args.train_save_model_every == 0:
-            save_weights(os.path.join(args.output_dir, 'weights'), model, ext_text=args.model_name, epoch=epoch)
+            save_weights(args.output_dir+"/weights", model, ext_text=args.save_model_path, epoch=epoch)
         
 
     print(now(), 'ENDED TRAINING')
@@ -237,37 +239,41 @@ def data_extraction(args, dataset_loader, model):
 
     # create labels (equal number of 1/-1)
     y = torch.zeros(args.extraction_data_amount).type(torch.get_default_dtype()).to(args.device)
-    y[:y.shape[0] // 2] = -1
-    y[y.shape[0] // 2:] = 1
-    y = y.long()
-
+    y[:y.shape[0] // 2] = -0.001 if args.y_param else -1
+    y[y.shape[0] // 2:] = 0.001 if args.y_param else 1
+    # y =  torch.where(torch.load("results/mlptest/x/train_0.pt")[0][1]<0.01, -1, 1).to(torch.float64)/1000
+    if args.y_param: 
+        y.requires_grad_(True)
+        opt_y = torch.optim.SGD([y], lr=0.01, momentum=0.9)
     # trainable parameters
     l, opt_l, opt_x, x = get_trainable_params(args, x0)
 
     print('y type,shape:', y.type(), y.shape)
     print('l type,shape:', l.type(), l.shape)
 
-    torch.save(y, os.path.join(args.output_dir, "y.pth"))
-    if args.wandb_active:
-        wandb.save(os.path.join(wandb.run.dir, "y.pth"), base_path=args.wandb_base_path)
+    
 
     # extraction phase
     for epoch in range(args.extraction_epochs):
         values = model(x).squeeze()
+        
         loss, kkt_loss, loss_verify = calc_extraction_loss(args, l, model, values, x, y)
+        
         if np.isnan(kkt_loss.item()):
             raise ValueError('Optimizer diverged during extraction')
         opt_x.zero_grad()
         opt_l.zero_grad()
+        if args.y_param: opt_y.zero_grad()
         loss.backward()
         opt_x.step()
         opt_l.step()
+        if args.y_param: opt_y.step()
+        
+        
 
         if epoch % args.extraction_evaluate_rate == 0:
             extraction_score = evaluate_extraction(args, epoch, kkt_loss, loss_verify, x, x0, y0, ds_mean)
-            if epoch >= args.extraction_stop_threshold and extraction_score > 3300:
-                print('Extraction Score is too low. Epoch:', epoch, 'Score:', extraction_score)
-                break
+            
 
         # send extraction output to wandb
         if (args.extract_save_results_every > 0 and epoch % args.extract_save_results_every == 0) \
@@ -277,7 +283,9 @@ def data_extraction(args, dataset_loader, model):
             if args.wandb_active:
                 wandb.save(os.path.join(args.output_dir, 'x', f'{epoch}_x.pth'), base_path=args.wandb_base_path)
                 wandb.save(os.path.join(args.output_dir, 'l', f'{epoch}_l.pth'), base_path=args.wandb_base_path)
-
+    torch.save(y, os.path.join(args.output_dir, "y.pth"))
+    if args.wandb_active:
+        wandb.save(os.path.join(wandb.run.dir, "y.pth"), base_path=args.wandb_base_path)
 
 ###############################################################################
 #                               MAIN                                          #
@@ -300,25 +308,14 @@ def create_dirs_save_files(args):
 
 def setup_args(args):
     torch.manual_seed(args.seed)
-    from settings import datasets_dir, models_dir, results_base_dir
-    args.datasets_dir = datasets_dir
+    
         
     args.device = torch.device(f'cuda:{args.rank}' if torch.cuda.is_available() else 'cpu')
-    args.results_base_dir = results_base_dir
-    if args.pretrained_model_path:
-        args.pretrained_model_path = os.path.join(models_dir, args.pretrained_model_path)
-    args.model_name = f'{args.problem}_d{args.data_per_class_train}'
-    if args.proj_name:
-        args.model_name += f'_{args.proj_name}'
     
-    if args.rank == 0:
-        
-
-        
-        
-
+   
+    args.save_model_path = f"model_{args.data_per_class_train}_{int(args.heterogeneity*1000)}_{args.avg_interval}_{args.problem}.pt"
     
-
+    if args.rank == 0:    
         if args.wandb_active:
             wandb.init(project=args.wandb_project_name, entity='dataset_reconsruction')
             wandb.config.update(args)
@@ -326,10 +323,8 @@ def setup_args(args):
         if args.wandb_active:
             args.output_dir = wandb.run.dir
         args.wandb_base_path = './'
-    import dateutil.tz
-    timestamp = datetime.datetime.now(dateutil.tz.tzlocal()).strftime('%Y_%m_%d_%H')
-    run_name = f'{timestamp}_{args.model_name}'
-    args.output_dir = os.path.join(args.results_base_dir, run_name)
+    
+    
     print('OUTPUT_DIR:', args.output_dir)
     
     return args
@@ -344,13 +339,13 @@ def main_train(args, train_loader, test_loader, val_loader):
     
     trained_model = train(args, train_loader, test_loader, val_loader, model)
     if args.rank==0 and args.train_save_model:
-        save_weights(args.output_dir, trained_model, ext_text=args.model_name)
+        save_weights(args.output_dir, trained_model, ext_text=args.save_model_path)
     for i in range(args.num_clients):
         if args.rank == i:
             torch.save(train_loader, args.output_dir + f"/x/train_{args.rank}.pt")
 
 def main_reconstruct(args, train_loader):
-    print('USING PRETRAINED MODEL AT:', args.pretrained_model_path)
+    print('PRETRAINED MODEL AT:', args.pretrained_model_path)
     extraction_model = create_model(args, extraction=True)
     extraction_model.eval()
     extraction_model = load_weights(extraction_model, args.pretrained_model_path, device=args.device)

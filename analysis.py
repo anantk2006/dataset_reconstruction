@@ -142,14 +142,15 @@ def sort_by_metric(xx, yy, sort='ssim'):
         _, sort_idxs = dists.sort()
     elif sort == 'l2':
         dists = (xx - yy).reshape(xx.shape[0], -1).norm(dim=1)
-        _, sort_idxs = dists.sort()
+        _, sort_idxs = dists.sort(descending=False)
         print(_.mean(), _[:50].mean())
     elif sort == 'psnr':
         dists = psnr(xx, yy)
         _, sort_idxs = dists.sort(descending=True)
     else:
         raise
-
+    
+    
     xx = xx[sort_idxs]
     yy = yy[sort_idxs]
     return xx, yy, dists, sort_idxs
@@ -183,21 +184,21 @@ def plot_table(xx, yy, fig_elms_in_line, fig_lines_per_page, fig_type='side_by_s
         q_zip = common_utils.common.flatten(list(zip(torch.split(xx, fig_elms_in_line), torch.split(yy, fig_elms_in_line))))
         if len(q_zip) > 2:
             q_zip = q_zip[:-2]
-            print('CUT the end of the zipped bla because it might have different shape before torch.cat')
+            
         qq = torch.cat(q_zip)
     else:
         raise
 
     lines_num = qq.shape[0] // fig_elms_in_line
-    print(qq.shape, lines_num)
-    for page_num, line_num in enumerate(tqdm(range(0, lines_num, fig_lines_per_page))):
+   
+    for page_num, line_num in enumerate(range(0, lines_num, fig_lines_per_page)):
         s = line_num * fig_elms_in_line
         e = (line_num + fig_lines_per_page) * fig_elms_in_line
-        print(page_num, s, e)
+       
         grid = torchvision.utils.make_grid(qq[s:e], normalize=False, nrow=fig_elms_in_line, pad_value=1)
         if figpath is not None:
             plt.imsave(figpath, grid.permute(1, 2, 0).cpu().numpy(), dpi=dpi)
-            print('Saved fig at:', figpath)
+            
         if show:
             plt.figure(figsize=(80 * 2, 10 * 2))
             plt.axis('off')
@@ -205,4 +206,4 @@ def plot_table(xx, yy, fig_elms_in_line, fig_lines_per_page, fig_type='side_by_s
             plt.show()
         plt.close('all')
         break
-    print('DONE!')
+ 

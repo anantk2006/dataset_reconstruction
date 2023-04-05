@@ -31,6 +31,7 @@ def get_args(*args):
     # parser.add_argument('--datasets_dir', default='datasets', help='this is loaded from settings.py')
     # parser.add_argument('--results_base_dir', default='./', help='this is loaded from settings.py')
     parser.add_argument('--pretrained_model_path', default='', help='path to pretrained model (ignored if empty)')
+    parser.add_argument('--output_dir', default='', help='place where results are saved')
     parser.add_argument('--train_save_model', default='true', type=str2bool, help='')
     parser.add_argument('--train_save_model_every', default=-1, type=int, help='only saves if >0')
     parser.add_argument('--extract_save_results', default='true', type=str2bool, help='')
@@ -66,6 +67,8 @@ def get_args(*args):
     parser.add_argument('--train_threshold', default=0.0001, type=float, help='stop training below this loss')
     parser.add_argument('--train_SGD', default='false', type=str2bool, help='')
     parser.add_argument('--train_SGD_batch_size', default=64, type=int, help='')
+    parser.add_argument('--y_param', default="false", type=str2bool, help='allow making y a trainable parameter')
+    parser.add_argument('--num_conv_layers', default="3", type=int, help='if conv, number of convolutional layers')
 
     # extraction
     parser.add_argument('--extraction_epochs', default=1000, type=int, help='')
