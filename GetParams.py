@@ -91,6 +91,9 @@ def get_args(*args):
     parser.add_argument("--avg_interval", default = "100", type=int, help = "iteration interval between consecutive averaging")
     parser.add_argument("--rank", default = 0, type=int, help = "rank of process here")
     parser.add_argument("--heterogeneity", default = 0, type=float, help = "percent of each clients dataset to be heterogenous")
+    parser.add_argument('--cont_obj', default="false", type=str2bool, help='include novel contrastive objective')
+    parser.add_argument('--cont_margin', default=128, type=float, help='alpha value for contrastive objective')
+    parser.add_argument("--cont_coeff", default=0.1, type = float, help = "weight of contrastive loss")
 
     if not isinstance(args, list):
         args = args[0]

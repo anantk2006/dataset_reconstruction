@@ -54,15 +54,18 @@ class NeuralNetwork(nn.Module):
         self.layers = nn.ModuleList([nn.Linear(input_dim, hidden_dim_list[0])])
         for i in range(1, len(hidden_dim_list)):
             self.layers.append(nn.Linear(hidden_dim_list[i-1], hidden_dim_list[i], bias=use_bias))
-        self.layers.append(nn.Linear(hidden_dim_list[-1], output_dim, bias=False))  # output layer
+        self.layers.append(nn.Linear(hidden_dim_list[-1], 128, bias=False))  # output layer
+        self.layers.append(nn.Linear(128, output_dim, bias=False))  # output layer
 
-    def forward(self, data):
+    def forward(self, data, extract = False):
         feats = Flatten()(data)
         for layer in self.layers[:-1]:
             feats = layer(feats)
             feats = self.activation(feats)
+        extraction = feats
         feats = self.layers[-1](feats)
-        return feats
+        if extract: return feats, extraction
+        else: return feats
 class CNN(nn.Module):
     def __init__(self, num_layers = 3, problem = "mnist_odd_even"):
         super(CNN, self).__init__()
@@ -84,6 +87,8 @@ class CNN(nn.Module):
                 padding=0, 
                 bias = False
             )
+        else:
+            raise NotImplementedError(f"problem name {problem} doesn't exist")
         self.layers = nn.ModuleList([         
             layer1,                              
             nn.ReLU(),
@@ -97,13 +102,18 @@ class CNN(nn.Module):
         for layer in [nn.Conv2d(32, 32, 4, 1, 0, bias = False),
             nn.ReLU(),
             nn.Flatten(),
-            nn.Linear(32*7*7, 1, bias = False) ]:
+            nn.Linear(32*7*7, 128, bias = False),
+            nn.ReLU(),
+            nn.Linear(128, 1, bias = False) ]:
             self.layers.append(layer)
         self.layers = nn.Sequential(*self.layers)
         # fully connected layer, output 10 classes
      
-    def forward(self, x):
-        return self.layers(x)
+    def forward(self, x, extract = False):
+        extraction = self.layers[:-1](x)
+        values = self.layers[-1:](extraction)
+        if extract: return values, extraction
+        else: return values
 
 def create_model(args, extraction):
     if not extraction:

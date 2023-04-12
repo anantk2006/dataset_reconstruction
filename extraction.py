@@ -1,7 +1,7 @@
 import torch
 import torchvision
 
-import wandb
+import wandb, random
 from common_utils.common import now
 from CreateModel import Flatten
 from evaluations import get_evaluation_score_dssim, viz_nns
@@ -89,13 +89,59 @@ def get_verify_loss(args, x, l):
 
     return loss_verify
 
+def get_cont_obj(extractions, y, args):
+    if args.y_param:
+        closs = torch.Tensor([0]).to(args.device)
+        _, indices = y.sort(descending = False)
+        for idx in range(len(indices)-1):
+            closs += torch.linalg.norm(extractions[int(indices[idx])] - extractions[int(indices[idx+1])])**2
+        for idx in range(len(indices)//3):
+            idx_neg = int(random.random()*(y.shape[0]*0.1)+y.shape[0]*0.9)
+            closs += torch.max(args.cont_margin - torch.linalg.norm(extractions[int(indices[idx_neg])] - extractions[int(indices[idx])])**2, torch.Tensor([0]).to(args.device))  
+        for idx in range(2*len(indices)//3, len(indices)):
+            idx_neg = int(random.random()*(y.shape[0]*0.1))
+            closs += torch.max(args.cont_margin - torch.linalg.norm(extractions[int(indices[idx_neg])] - extractions[int(indices[idx])])**2, torch.Tensor([0]).to(args.device))  
+        
 
-def calc_extraction_loss(args, l, model, values, x, y):
+        # for ind, extraction in enumerate(extractions):
+        #     idx = int(random.random()*(y.shape[0]))
+            
+        #     if torch.sign(y[ind])==torch.sign(y[idx]): 
+        #         closs += torch.linalg.norm(extraction - extractions[idx])**2
+        #     else:
+        #         closs += torch.max(args.cont_margin - torch.linalg.norm(extraction - extractions[idx])**2, torch.Tensor([0]).to(args.device))  
+        return closs    
+    else:
+        closs = torch.Tensor([0]).to(args.device)
+        for extraction in extractions[:y.shape[0]//2]:
+            pos_idx = int(random.random()*(y.shape[0]//2)+(y.shape[0]//2))
+            neg_idx = int(random.random()*(y.shape[0]//2))
+            closs += torch.linalg.norm(extraction - extractions[neg_idx])**2
+            closs -= torch.linalg.norm(extraction - extractions[pos_idx])**2
+        for extraction in extractions[y.shape[0]//2:]:
+            
+            pos_idx = int(random.random()*(y.shape[0]//2)+(y.shape[0]//2))
+            neg_idx = int(random.random()*(y.shape[0]//2))
+            closs -= torch.linalg.norm(extraction - extractions[neg_idx])**2
+            closs += torch.linalg.norm(extraction - extractions[pos_idx])**2
+        closs += args.cont_margin
+        return torch.max(closs, torch.Tensor([0]).to(args.device))
+
+def calc_extraction_loss(args, l, model, x, y):
+    cont_loss = torch.Tensor([0])
+    if args.cont_obj:      
+        values, extractions = model(x, extract = True)
+        values = values.squeeze()
+    else: values = model(x).squeeze()
     kkt_loss, loss_verify = torch.tensor(0), torch.tensor(0)
     if args.extraction_loss_type == 'kkt':
         kkt_loss = get_kkt_loss(args, values, l, y, model)
         loss_verify = get_verify_loss(args, x, l)
         loss = kkt_loss + loss_verify
+        if args.cont_obj: 
+            cont_loss = args.cont_coeff*get_cont_obj(extractions, y, args)[0]
+            loss += cont_loss
+        
 
     elif args.extraction_loss_type == 'naive':
         loss_naive = -(values[y == 1].mean() - values[y == -1].mean())
@@ -107,10 +153,10 @@ def calc_extraction_loss(args, l, model, values, x, y):
     else:
         raise ValueError(f'unknown args.extraction_loss_type={args.extraction_loss_type}')
 
-    return loss, kkt_loss, loss_verify
+    return loss, kkt_loss, loss_verify, cont_loss
 
 
-def evaluate_extraction(args, epoch, loss_extract, loss_verify, x, x0, y0, ds_mean):
+def evaluate_extraction(args, epoch, loss_extract, loss_verify, cont_loss, x, x0, y0, ds_mean):
     x_grad = x.grad.clone().data
     x = x.clone().data
     if args.wandb_active:
@@ -153,6 +199,6 @@ def evaluate_extraction(args, epoch, loss_extract, loss_verify, x, x0, y0, ds_me
             "extraction dssim": wandb.Image(dssim_grid),
         })
 
-    print(f'{now()} T={epoch} ; Losses: extract={loss_extract.item():5.10g} verify={loss_verify.item():5.5g} grads={x_grad.abs().mean()} Extraction-Score={extraction_score} Extraction-DSSIM={dssim_score}')
+    print(f'{now()} T={epoch} ; Losses: extract={loss_extract.item():5.10g} verify={loss_verify.item():5.5g} cont={cont_loss.item():5.5g} grads={x_grad.abs().mean()} Extraction-Score={extraction_score} Extraction-DSSIM={dssim_score}')
 
     return extraction_score

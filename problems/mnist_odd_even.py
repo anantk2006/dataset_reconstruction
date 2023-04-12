@@ -198,15 +198,15 @@ def get_data(dataset_name, dataroot, batch_size, val_ratio, world_size, rank, ar
     # Check that each worker dataset is disjoint. This is slow, so only comment this out
     # for testing.
     #"""
-    for i in range(world_size):
-        current_idxs = worker_idxs[i]
-        other_idxs = []
-        for j in range(world_size):
-            if j == i:
-                continue
-            other_idxs += worker_idxs[j]
-        for idx in current_idxs:
-            assert idx not in other_idxs
+    # for i in range(world_size):
+    #     current_idxs = worker_idxs[i]
+    #     other_idxs = []
+    #     for j in range(world_size):
+    #         if j == i:
+    #             continue
+    #         other_idxs += worker_idxs[j]
+    #     for idx in current_idxs:
+    #         assert idx not in other_idxs
     #"""
 
     # Get indices of local test dataset.

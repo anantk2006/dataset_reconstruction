@@ -255,9 +255,9 @@ def data_extraction(args, dataset_loader, model):
 
     # extraction phase
     for epoch in range(args.extraction_epochs):
-        values = model(x).squeeze()
         
-        loss, kkt_loss, loss_verify = calc_extraction_loss(args, l, model, values, x, y)
+        
+        loss, kkt_loss, loss_verify, cont_loss = calc_extraction_loss(args, l, model, x, y)
         
         if np.isnan(kkt_loss.item()):
             raise ValueError('Optimizer diverged during extraction')
@@ -272,7 +272,7 @@ def data_extraction(args, dataset_loader, model):
         
 
         if epoch % args.extraction_evaluate_rate == 0:
-            extraction_score = evaluate_extraction(args, epoch, kkt_loss, loss_verify, x, x0, y0, ds_mean)
+            extraction_score = evaluate_extraction(args, epoch, kkt_loss, loss_verify, cont_loss, x, x0, y0, ds_mean)
             
 
         # send extraction output to wandb
