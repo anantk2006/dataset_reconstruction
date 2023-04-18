@@ -89,18 +89,21 @@ def get_verify_loss(args, x, l):
 
     return loss_verify
 
-def get_cont_obj(extractions, y, args):
+def get_cont_obj(extractions, y, l, args):
     if args.y_param:
+        
         closs = torch.Tensor([0]).to(args.device)
-        _, indices = y.sort(descending = False)
+        _, indices = (y.flatten()*l.flatten().abs()).sort(descending = False)
+        
         for idx in range(len(indices)-1):
-            closs += torch.linalg.norm(extractions[int(indices[idx])] - extractions[int(indices[idx+1])])**2
-        for idx in range(len(indices)//3):
+            closs += torch.linalg.norm(extractions[int(indices[idx].item())] - extractions[int(indices[idx+1].item())])**2
+        for idx in range(len(indices)//10):
             idx_neg = int(random.random()*(y.shape[0]*0.1)+y.shape[0]*0.9)
-            closs += torch.max(args.cont_margin - torch.linalg.norm(extractions[int(indices[idx_neg])] - extractions[int(indices[idx])])**2, torch.Tensor([0]).to(args.device))  
-        for idx in range(2*len(indices)//3, len(indices)):
+            closs += torch.max(args.cont_margin - torch.linalg.norm(extractions[int(indices[idx].item())] - extractions[int(indices[idx_neg].item())])**2, torch.Tensor([0]).to(args.device))  
+        for idx in range(9*len(indices)//10, len(indices)):
             idx_neg = int(random.random()*(y.shape[0]*0.1))
-            closs += torch.max(args.cont_margin - torch.linalg.norm(extractions[int(indices[idx_neg])] - extractions[int(indices[idx])])**2, torch.Tensor([0]).to(args.device))  
+            closs += torch.max(args.cont_margin - torch.linalg.norm(extractions[int(indices[idx].item())] - extractions[int(indices[idx_neg].item())])**2, torch.Tensor([0]).to(args.device))  
+        
         
 
         # for ind, extraction in enumerate(extractions):
@@ -112,6 +115,7 @@ def get_cont_obj(extractions, y, args):
         #         closs += torch.max(args.cont_margin - torch.linalg.norm(extraction - extractions[idx])**2, torch.Tensor([0]).to(args.device))  
         return closs    
     else:
+        
         closs = torch.Tensor([0]).to(args.device)
         for extraction in extractions[:y.shape[0]//2]:
             pos_idx = int(random.random()*(y.shape[0]//2)+(y.shape[0]//2))
@@ -139,7 +143,7 @@ def calc_extraction_loss(args, l, model, x, y):
         loss_verify = get_verify_loss(args, x, l)
         loss = kkt_loss + loss_verify
         if args.cont_obj: 
-            cont_loss = args.cont_coeff*get_cont_obj(extractions, y, args)[0]
+            cont_loss = args.cont_coeff*get_cont_obj(extractions, y, l, args)[0]
             loss += cont_loss
         
 

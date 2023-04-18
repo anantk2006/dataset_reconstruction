@@ -261,12 +261,14 @@ def data_extraction(args, dataset_loader, model):
         
         if np.isnan(kkt_loss.item()):
             raise ValueError('Optimizer diverged during extraction')
+        
         opt_x.zero_grad()
         opt_l.zero_grad()
         if args.y_param: opt_y.zero_grad()
         loss.backward()
         opt_x.step()
         opt_l.step()
+        
         if args.y_param: opt_y.step()
         
         
