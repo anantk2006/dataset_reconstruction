@@ -120,16 +120,25 @@ def get_cont_obj(extractions, y, l, args):
         for extraction in extractions[:y.shape[0]//2]:
             pos_idx = int(random.random()*(y.shape[0]//2)+(y.shape[0]//2))
             neg_idx = int(random.random()*(y.shape[0]//2))
-            closs += torch.linalg.norm(extraction - extractions[neg_idx])**2
-            closs -= torch.linalg.norm(extraction - extractions[pos_idx])**2
+            iloss = torch.Tensor([0]).to(args.device)
+            iloss += torch.linalg.norm(extraction - extractions[neg_idx])**2
+            iloss -= torch.linalg.norm(extraction - extractions[pos_idx])**2
+            iloss += args.cont_margin
+            iloss = torch.max(iloss, torch.Tensor([0]).to(args.device))
+            closs += iloss
+            
         for extraction in extractions[y.shape[0]//2:]:
             
             pos_idx = int(random.random()*(y.shape[0]//2)+(y.shape[0]//2))
             neg_idx = int(random.random()*(y.shape[0]//2))
-            closs -= torch.linalg.norm(extraction - extractions[neg_idx])**2
-            closs += torch.linalg.norm(extraction - extractions[pos_idx])**2
-        closs += args.cont_margin
-        return torch.max(closs, torch.Tensor([0]).to(args.device))
+            iloss = torch.Tensor([0]).to(args.device)
+            iloss -= torch.linalg.norm(extraction - extractions[neg_idx])**2
+            iloss += torch.linalg.norm(extraction - extractions[pos_idx])**2
+            iloss += args.cont_margin
+            iloss = torch.max(iloss, torch.Tensor([0]).to(args.device))
+            closs += iloss
+        
+        return closs
 
 def calc_extraction_loss(args, l, model, x, y):
     cont_loss = torch.Tensor([0])

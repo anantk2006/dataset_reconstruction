@@ -56,7 +56,10 @@ do
         --avg_interval=$AVG_INTERVAl \
         --heterogeneity=$HETERO \
         --output_dir=$OUTPUT \
-        --model_type=mlp \
+        --model_type=conv \
+        --num_conv_layers=6 \
+        --cont_obj=false \
+        --y_param=false \
         --seed=$i &
     PIDS[$i]=$!
     
