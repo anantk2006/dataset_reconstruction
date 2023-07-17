@@ -69,6 +69,7 @@ def get_args(*args):
     parser.add_argument('--train_SGD_batch_size', default=64, type=int, help='')
     parser.add_argument('--y_param', default="false", type=str2bool, help='allow making y a trainable parameter')
     parser.add_argument('--num_conv_layers', default="3", type=int, help='if conv, number of convolutional layers')
+    parser.add_argument('--num_feat_extract', default="128", type=int, help='number of feature extractions for contrastive learning')
 
     # extraction
     parser.add_argument('--extraction_epochs', default=1000, type=int, help='')
@@ -84,16 +85,22 @@ def get_args(*args):
     parser.add_argument('--extraction_min_lambda', default=0.05, type=float, help='minimum lambda in the extraction loss')
     parser.add_argument('--extraction_loss_type', default='kkt', help='options: kkt, naive')
     parser.add_argument('--extraction_stop_threshold', default=5000, type=int)
+    parser.add_argument("--model_inversion", default = "false", type = str2bool, help = "bool whether or not to use model inversion (baseline)")
+    parser.add_argument("--decoder", default = "false", type = str2bool, help = "use convolutional decoder to make images more structured")
 
-    parser.add_argument("--is_federated", default = "true", type = str2bool)
+    parser.add_argument("--gpuid", default = 0, type=int, help = "number of gpus with data")
+    parser.add_argument("--is_federated", default = "false", type = str2bool)
     parser.add_argument("--num_clients", default = 8, type=int, help = "number of gpus with data")
     parser.add_argument("--init_method", default = "/home/akhande/dataset_reconstruction/", type=str, help = "folder where comms go")
     parser.add_argument("--avg_interval", default = "100", type=int, help = "iteration interval between consecutive averaging")
     parser.add_argument("--rank", default = 0, type=int, help = "rank of process here")
     parser.add_argument("--heterogeneity", default = 0, type=float, help = "percent of each clients dataset to be heterogenous")
     parser.add_argument('--cont_obj', default="false", type=str2bool, help='include novel contrastive objective')
-    parser.add_argument('--cont_margin', default=128, type=float, help='alpha value for contrastive objective')
+    parser.add_argument('--cont_margin_i', default=12, type=float, help='alpha value for contrastive objective')
     parser.add_argument("--cont_coeff", default=0.1, type = float, help = "weight of contrastive loss")
+    parser.add_argument('--cont_margin_ag', default=1000, type=float, help='alpha value for contrastive objective')
+    parser.add_argument('--two_classes', default="false", type=str2bool, help='whether or not to use just 0s and 1s')
+    parser.add_argument('--multi_class', default="false", type=str2bool, help='whether or not to do 10 different classes')    
 
     if not isinstance(args, list):
         args = args[0]

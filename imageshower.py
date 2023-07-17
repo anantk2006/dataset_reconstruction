@@ -38,7 +38,7 @@ Xtrn, Ytrn, ds_mean, W, model = analysis_utils.sweep_get_data_model(f"results/{a
 # Here we put reconstructed data from two diffferent runs.
 # you can use both of them or just one. (uncomment relevant parts)
 
-X = torch.load(f"results/{args[0]}")
+X = torch.load(f"results/{args[0]}", map_location=torch.device("cuda:0"))
 
 
 xx1 = find_nearest_neighbour(X.to(torch.float32), Xtrn.to(torch.float32), search='ncc', vote='min', use_bb=False, nn_threshold=None)

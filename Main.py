@@ -10,7 +10,7 @@ import wandb
 import common_utils
 from common_utils.common import AverageValueMeter, load_weights, now, save_weights
 from CreateData import setup_problem
-from CreateModel import create_model
+from CreateModel import create_model, Decoder
 from extraction import calc_extraction_loss, evaluate_extraction, get_trainable_params
 from GetParams import get_args
 
@@ -24,14 +24,18 @@ os.environ['QT_QPA_PLATFORM'] = 'offscreen'
 ###############################################################################
 def get_loss_ce(args, model, x, y):
     p = model(x)
-    p = p.view(-1)
-    loss = torch.nn.BCEWithLogitsLoss()(p, y)
+    
+    if not args.multi_class: p = p.view(-1)
+    y = y.long()
+    criterion = torch.nn.BCEWithLogitsLoss() if not args.multi_class else torch.nn.CrossEntropyLoss()
+    loss = criterion(p, y)
     return loss, p
 
 
 def get_total_err(args, p, y):
     # BCEWithLogitsLoss needs 0,1
-    err = (p.sign().view(-1).add(1).div(2) != y).float().mean().item()
+    if not args.multi_class: err = (p.sign().view(-1).add(1).div(2) != y).float().mean().item()
+    else: err = (torch.argmax(p, dim = 1)!=y).float().mean().item()
     return err
 
 
@@ -63,9 +67,9 @@ def get_total_err(args, p, y):
 def epoch_ce(args, dataloader, model, epoch, device, opt=None):
     total_loss, total_err = AverageValueMeter(), AverageValueMeter()
     model.train()
-    model = model.cuda()
+    model = model.to(args.device)
     for i, (x, y) in enumerate(dataloader):
-        x, y = x.cuda(), y.cuda()
+        x, y = x.to(args.device), y.to(args.device)
         loss, p = get_loss_ce(args, model, x, y)
 
         if opt:
@@ -228,7 +232,7 @@ def data_extraction(args, dataset_loader, model):
     x0, y0 = next(iter(dataset_loader))
     print('X:', x0.shape, x0.device)
     print('y:', y0.shape, y0.device)
-    print('model device:', model.layers[0].weight.device)
+    #print('model device:', model.layers[0].weight.device)
     if args.data_reduce_mean:
         ds_mean = x0.mean(dim=0, keepdims=True)
         x0 = x0 - ds_mean
@@ -238,15 +242,30 @@ def data_extraction(args, dataset_loader, model):
     #     send_input_data(args, model, x0, y0)
 
     # create labels (equal number of 1/-1)
-    y = torch.zeros(args.extraction_data_amount).type(torch.get_default_dtype()).to(args.device)
-    y[:y.shape[0] // 2] = -0.001 if args.y_param else -1
-    y[y.shape[0] // 2:] = 0.001 if args.y_param else 1
+    if not args.multi_class:
+        y = torch.zeros(args.extraction_data_amount).type(torch.get_default_dtype()).to(args.device)
+        y[:y.shape[0] // 2] = -0.001 if args.y_param else -1
+        y[y.shape[0] // 2:] = 0.001 if args.y_param else 1
+
+        if args.model_inversion: y = torch.clamp(y, 0, 1)
+    else:
+        y = torch.repeat_interleave(torch.arange(0, 10, 1), args.extraction_data_amount//10, 0).type(torch.get_default_dtype()).to(args.device)
     # y =  torch.where(torch.load("results/mlptest/x/train_0.pt")[0][1]<0.01, -1, 1).to(torch.float64)/1000
     if args.y_param: 
         y.requires_grad_(True)
         opt_y = torch.optim.SGD([y], lr=0.01, momentum=0.9)
     # trainable parameters
-    l, opt_l, opt_x, x = get_trainable_params(args, x0)
+    if not args.decoder: l, opt_l, opt_x, x = get_trainable_params(args, x0)
+    else:
+        x = torch.rand(args.extraction_data_amount, 36).to(args.device) * args.extraction_init_scale
+        x.requires_grad_(True)
+       
+        l = torch.rand(args.extraction_data_amount, 1).to(args.device)
+        l.requires_grad_(True)
+        opt_x = torch.optim.SGD([x], lr=args.extraction_lr, momentum=0.9)
+        opt_l = torch.optim.SGD([l], lr=args.extraction_lambda_lr, momentum=0.9)
+        decoder = Decoder().to(args.device)
+        opt_d = torch.optim.SGD(decoder.parameters(), lr=args.extraction_lr, momentum=0.9)
 
     print('y type,shape:', y.type(), y.shape)
     print('l type,shape:', l.type(), l.shape)
@@ -256,31 +275,42 @@ def data_extraction(args, dataset_loader, model):
     # extraction phase
     for epoch in range(args.extraction_epochs):
         
-        
-        loss, kkt_loss, loss_verify, cont_loss = calc_extraction_loss(args, l, model, x, y)
-        
+        if args.multi_class: l2 = l.square() + args.extraction_min_lambda
+        else: l2 = l
+        if not args.decoder: loss, kkt_loss, loss_verify, cont_loss, inver_loss = calc_extraction_loss(args, l2, model, x, y)
+        else: 
+            full_x = decoder(x)
+            loss, kkt_loss, loss_verify, cont_loss, inver_loss = calc_extraction_loss(args, l2, model, full_x, y)
         if np.isnan(kkt_loss.item()):
             raise ValueError('Optimizer diverged during extraction')
         
         opt_x.zero_grad()
         opt_l.zero_grad()
+        
+        if args.decoder: opt_d.zero_grad()
         if args.y_param: opt_y.zero_grad()
         loss.backward()
+        
         opt_x.step()
         opt_l.step()
+        if args.decoder: opt_d.step()
+    
         
         if args.y_param: opt_y.step()
         
         
 
         if epoch % args.extraction_evaluate_rate == 0:
-            extraction_score = evaluate_extraction(args, epoch, kkt_loss, loss_verify, cont_loss, x, x0, y0, ds_mean)
+            if not args.decoder: extraction_score = evaluate_extraction(args, epoch, kkt_loss, loss_verify, cont_loss, inver_loss, x, x0, y0, ds_mean)
+            else: extraction_score = evaluate_extraction(args, epoch, kkt_loss, loss_verify, cont_loss, inver_loss, x, x0, y0, ds_mean, full_x = full_x)
             
+           
 
         # send extraction output to wandb
         if (args.extract_save_results_every > 0 and epoch % args.extract_save_results_every == 0) \
                 or (args.extract_save_results and epoch % args.extraction_evaluate_rate == 0):
-            torch.save(x, os.path.join(args.output_dir, 'x', f'{epoch}_x.pth'))
+            if not args.decoder: torch.save(x, os.path.join(args.output_dir, 'x', f'{epoch}_x.pth'))
+            else: torch.save(decoder(x), os.path.join(args.output_dir, 'x', f'{epoch}_x.pth'))
             torch.save(l, os.path.join(args.output_dir, 'l', f'{epoch}_l.pth'))
             if args.wandb_active:
                 wandb.save(os.path.join(args.output_dir, 'x', f'{epoch}_x.pth'), base_path=args.wandb_base_path)
@@ -312,7 +342,7 @@ def setup_args(args):
     torch.manual_seed(args.seed)
     
         
-    args.device = torch.device(f'cuda:{args.rank}' if torch.cuda.is_available() else 'cpu')
+    args.device = torch.device(f'cuda:{args.gpuid}' if torch.cuda.is_available() else 'cpu')
     
    
     args.save_model_path = f"model_{args.data_per_class_train}_{int(args.heterogeneity*1000)}_{args.avg_interval}_{args.problem}.pt"
@@ -358,6 +388,7 @@ def main_reconstruct(args, train_loader):
 
 
 def validate_settings_exists():
+    return True
     if os.path.isfile("settings.py"):
         return
     raise FileNotFoundError("You should create a 'settings.py' file with the contents of 'settings.deafult.py', " + 
@@ -370,11 +401,15 @@ def main():
     validate_settings_exists()
     args = get_args(sys.argv[1:])
     args = setup_args(args)
+    torch.cuda.set_device(args.gpuid)
     if args.rank != 0:
         dn = open(os.devnull, "w")
         sys.stdout = dn
+    print(args.rank)
+    
     if args.is_federated: 
         print("Moment of truth")
+        
         dist.init_process_group(backend="nccl", rank=args.rank, world_size=args.num_clients, init_method=args.init_method)
         print("Hallelujah")
     create_dirs_save_files(args)
@@ -387,13 +422,13 @@ def main():
         torch.set_default_dtype(torch.float64)
     if args.cuda:
         print(f'os.environ["CUDA_VISIBLE_DEVICES"]={os.environ["CUDA_VISIBLE_DEVICES"]}')
-    torch.cuda.set_device(args.rank)
+    
 
     print('DEVICE:', args.device)
     print('DEFAULT DTYPE:', torch.get_default_dtype())
 
     train_loader, test_loader, val_loader = setup_problem(args)
-
+   
     # train
     if args.run_mode == 'train':
         main_train(args, train_loader, test_loader, val_loader)

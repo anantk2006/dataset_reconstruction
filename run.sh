@@ -28,7 +28,7 @@ PIDS=(1 2 3 4 5 6 7 8)
 # placeholder values
 for i in {0..7}
 do
-    # if [ $i -eq 0 ]
+    # if [ $i eq 0 ]
     # then
     #     continue
     # fi
@@ -38,7 +38,7 @@ do
     # fi
     RANK=$i
     CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
-    python Main.py \
+    python3 Main.py \
         --run_mode=train \
         --problem=$PROBLEM \
         --proj_name=$PROJ_NAME \
@@ -57,10 +57,13 @@ do
         --heterogeneity=$HETERO \
         --output_dir=$OUTPUT \
         --model_type=conv \
-        --num_conv_layers=6 \
+        --is_federated=true \
+        --num_conv_layers=3 \
         --cont_obj=false \
         --y_param=false \
-        --seed=$i &
+        --seed=$i \
+        --gpuid=$RANK &
+    
     PIDS[$i]=$!
     
 

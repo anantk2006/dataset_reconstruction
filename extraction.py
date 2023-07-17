@@ -59,12 +59,34 @@ def get_trainable_params(args, x0):
 def get_kkt_loss(args, values, l, y, model):
     l = l.squeeze()
     # all three shape should be (n)
-    assert values.dim() == 1
-    assert l.dim() == 1
-    assert y.dim() == 1
-    assert values.shape == l.shape == y.shape
+    
+    
+    if not args.multi_class: 
+        assert values.dim() == 1
+        assert l.dim() == 1
+        assert y.dim() == 1
+        assert values.shape == l.shape == y.shape
+        c = values*y
+    else:
+        c = torch.zeros_like(l, device=args.device)
+        
+        for i in range(c.shape[0]):
+            best = torch.tensor([-10**6]).to(args.device)
+            
+            truth = torch.tensor([values[i, int(y[i])]]).to(args.device)
+            for j in range(0, values.shape[1]):
+                
+                if values[i][j]>best and j!=y[i]: 
+                    best = values[i, j]
+                    
+            c[i] = truth - best
 
-    output = values * l * y
+
+
+        
+         
+
+    output = c * l
     grad = torch.autograd.grad(
         outputs=output,
         inputs=model.parameters(),
@@ -85,7 +107,7 @@ def get_verify_loss(args, x, l):
     loss_verify = 0
     loss_verify += 1 * (x - 1).relu().pow(2).sum()
     loss_verify += 1 * (-1 - x).relu().pow(2).sum()
-    loss_verify += 5 * (-l + args.extraction_min_lambda).relu().pow(2).sum()
+    if not args.multi_class: loss_verify += 5 * (-l + args.extraction_min_lambda).relu().pow(2).sum()
 
     return loss_verify
 
@@ -110,44 +132,47 @@ def get_cont_obj(extractions, y, l, args):
         #     idx = int(random.random()*(y.shape[0]))
             
         #     if torch.sign(y[ind])==torch.sign(y[idx]): 
-        #         closs += torch.linalg.norm(extraction - extractions[idx])**2
+        #         closs += torch.linalg.norm(extraction - ex tractions[idx])**2
         #     else:
         #         closs += torch.max(args.cont_margin - torch.linalg.norm(extraction - extractions[idx])**2, torch.Tensor([0]).to(args.device))  
         return closs    
     else:
-        
+        classes = 10 if args.multi_class else 2
         closs = torch.Tensor([0]).to(args.device)
-        for extraction in extractions[:y.shape[0]//2]:
-            pos_idx = int(random.random()*(y.shape[0]//2)+(y.shape[0]//2))
-            neg_idx = int(random.random()*(y.shape[0]//2))
-            iloss = torch.Tensor([0]).to(args.device)
-            iloss += torch.linalg.norm(extraction - extractions[neg_idx])**2
-            iloss -= torch.linalg.norm(extraction - extractions[pos_idx])**2
-            iloss += args.cont_margin
-            iloss = torch.max(iloss, torch.Tensor([0]).to(args.device))
-            closs += iloss
-            
-        for extraction in extractions[y.shape[0]//2:]:
-            
-            pos_idx = int(random.random()*(y.shape[0]//2)+(y.shape[0]//2))
-            neg_idx = int(random.random()*(y.shape[0]//2))
-            iloss = torch.Tensor([0]).to(args.device)
-            iloss -= torch.linalg.norm(extraction - extractions[neg_idx])**2
-            iloss += torch.linalg.norm(extraction - extractions[pos_idx])**2
-            iloss += args.cont_margin
-            iloss = torch.max(iloss, torch.Tensor([0]).to(args.device))
-            closs += iloss
-        
+        for i in range(classes):
+            for extraction in extractions[(y.shape[0]//classes)*i:(y.shape[0]//classes)*(i+1)]:
+                iloss = torch.Tensor([0]).to(args.device)
+                pos_idx = int(random.random()*(y.shape[0]//classes)+(y.shape[0]//classes)*i)
+                neg_idx = 0
+                while True:
+                    neg_idx = int(random.random()*y.shape[0])
+                    if neg_idx < y.shape[0]//classes*i or neg_idx > y.shape[0]//classes*(i+1):
+                        break
+                iloss += torch.linalg.norm(extraction - extractions[pos_idx])**2       
+                iloss -= torch.linalg.norm(extraction - extractions[neg_idx])**2
+                # iloss += args.cont_margin_i
+                # iloss = torch.max(iloss, torch.Tensor([0]).to(args.device))                
+                closs += iloss
+        closs += args.cont_margin_ag
+        closs = torch.max(closs, torch.Tensor([0]).to(args.device))
         return closs
-
 def calc_extraction_loss(args, l, model, x, y):
     cont_loss = torch.Tensor([0])
+    inversion_loss = torch.Tensor([0]).to(args.device)
+    kkt_loss, loss_verify = torch.tensor(0), torch.tensor(0)
+    
     if args.cont_obj:      
         values, extractions = model(x, extract = True)
         values = values.squeeze()
     else: values = model(x).squeeze()
-    kkt_loss, loss_verify = torch.tensor(0), torch.tensor(0)
-    if args.extraction_loss_type == 'kkt':
+
+    if args.model_inversion:
+        loss = 0
+        loss_fn = torch.nn.BCEWithLogitsLoss() if not args.multi_class else torch.nn.CrossEntropyLoss()
+        
+        inversion_loss+=loss_fn(values, y)   
+        loss += inversion_loss 
+    elif args.extraction_loss_type == 'kkt':
         kkt_loss = get_kkt_loss(args, values, l, y, model)
         loss_verify = get_verify_loss(args, x, l)
         loss = kkt_loss + loss_verify
@@ -166,10 +191,10 @@ def calc_extraction_loss(args, l, model, x, y):
     else:
         raise ValueError(f'unknown args.extraction_loss_type={args.extraction_loss_type}')
 
-    return loss, kkt_loss, loss_verify, cont_loss
+    return loss, kkt_loss, loss_verify, cont_loss, inversion_loss
 
 
-def evaluate_extraction(args, epoch, loss_extract, loss_verify, cont_loss, x, x0, y0, ds_mean):
+def evaluate_extraction(args, epoch, loss_extract, loss_verify, cont_loss, inver_loss, x, x0, y0, ds_mean, full_x = None):
     x_grad = x.grad.clone().data
     x = x.clone().data
     if args.wandb_active:
@@ -179,7 +204,8 @@ def evaluate_extraction(args, epoch, loss_extract, loss_verify, cont_loss, x, x0
             "loss verify": loss_verify,
         })
 
-    xx = x.data.clone()
+    if not args.decoder: xx = x.data.clone()
+    else: xx = full_x.data.clone()
     yy = x0.clone()
     metric = 'ncc'
     if args.dataset == 'mnist':
@@ -198,7 +224,8 @@ def evaluate_extraction(args, epoch, loss_extract, loss_verify, cont_loss, x, x0
     extraction_score_with_mean = v[:10].mean().item()
 
     # SSIM EVALUATION
-    xx = x.data.clone()
+    if not args.decoder: xx = x.data.clone()
+    else: xx = full_x.data.clone()
     yy = x0.clone()
     dssim_score, dssim_grid = get_evaluation_score_dssim(xx, yy, ds_mean, vote=None, show=False)
 
@@ -212,6 +239,6 @@ def evaluate_extraction(args, epoch, loss_extract, loss_verify, cont_loss, x, x0
             "extraction dssim": wandb.Image(dssim_grid),
         })
 
-    print(f'{now()} T={epoch} ; Losses: extract={loss_extract.item():5.10g} verify={loss_verify.item():5.5g} cont={cont_loss.item():5.5g} grads={x_grad.abs().mean()} Extraction-Score={extraction_score} Extraction-DSSIM={dssim_score}')
+    print(f'{now()} T={epoch} ; Losses: extract={loss_extract.item():5.10g} verify={loss_verify.item():5.5g} cont={cont_loss.item():5.5g} inver={inver_loss.item():5.5g} grads={x_grad.abs().mean()} Extraction-Score={extraction_score} Extraction-DSSIM={dssim_score}')
 
     return extraction_score

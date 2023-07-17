@@ -90,7 +90,7 @@ def load_mnist_data(args):
     return [(x0, y0)], [(x0_test, y0_test)], None
 
 
-def get_data(dataset_name, dataroot, batch_size, val_ratio, world_size, rank, args, heterogeneity=0, num_workers=1, small=False):
+def get_data(dataset_name, dataroot, batch_size, val_ratio, world_size, rank, args, heterogeneity=0, num_workers=1, small=False, b01 = False):
     """
     Args:
         dataset_name (str): the name of the dataset to use, currently only
@@ -127,7 +127,7 @@ def get_data(dataset_name, dataroot, batch_size, val_ratio, world_size, rank, ar
     elif dataset_name == 'MNIST':
         dataset = torchvision.datasets.MNIST
         normalize = transforms.Normalize((0.1307,), (0.3081,))
-        num_labels = 2
+        num_labels = 2 if not args.multi_class else 10
     elif dataset_name == 'FashionMNIST':
         dataset = torchvision.datasets.FashionMNIST
         normalize = transforms.Normalize((0.2860,), (0.3530,))
@@ -144,13 +144,19 @@ def get_data(dataset_name, dataroot, batch_size, val_ratio, world_size, rank, ar
         transform_test = transforms.Compose([transforms.ToTensor(),
                                              normalize])
     elif dataset_name in ['MNIST', 'FashionMNIST']:
+        if args.model_type=="res":
+            transform_train =  transforms.Compose([transforms.ToTensor(), transforms.Resize(224)])
+            transform_test = transform_train
         transform_train =  transforms.Compose([transforms.ToTensor()])
         transform_test = transform_train
 
     # load and split the train dataset into train and validation and 
     # deployed to all GPUs.
-    ttransform = lambda x: x%2 
-    ttransform = transforms.Lambda(ttransform)
+    if not b01 and not args.multi_class: 
+        ttransform = lambda x: x%2
+        ttransform = transforms.Lambda(ttransform)
+    else: ttransform=None 
+    
     train_set = dataset(root=dataroot, train=True,
                         download=True, transform=transform_train, target_transform=ttransform)
     val_set = dataset(root=dataroot, train=True,
@@ -222,6 +228,35 @@ def get_data(dataset_name, dataroot, batch_size, val_ratio, world_size, rank, ar
         local_test_idx = local_test_idx[:round(len(local_test_idx) / 100)]
 
     # Construct loaders for train, valid, extra, and test sets.
+   
+    if b01:
+        index = 0
+        for i in [*local_train_idx]:
+            X, Y = train_set[i]
+            Y = int(Y)
+            if Y != 0 and Y != 1:
+                
+                local_train_idx.pop(index)
+            else: index+=1
+        index = 0 
+        for i in [*local_valid_idx]:
+            X, Y = val_set[i]
+            Y = int(Y)
+            if Y != 0 and Y != 1:
+                local_valid_idx.pop(index)
+            else: index +=1
+        index = 0 
+        for i in [*local_test_idx]:
+            X, Y = test_set[i]
+            Y = int(Y)
+            if Y != 0 and Y != 1:
+                local_test_idx.pop(index)
+            else: index +=1
+
+                
+            
+    
+
     train_sampler = SubsetRandomSampler(local_train_idx)
     train_loader = DataLoader(
         train_set,
@@ -254,16 +289,18 @@ def get_data(dataset_name, dataroot, batch_size, val_ratio, world_size, rank, ar
     train_list_y = []
     max_batch = args.data_amount//batch_size
     for i, (x,y) in enumerate(train_loader):
+        
         if i==max_batch: break
         train_list_x.append(x)
         train_list_y.append(y)
-    train_loader = [(torch.cat(train_list_x, dim = 0).to(args.device), torch.cat(train_list_y, dim = 00).to(args.device).to(torch.float32))]
+    train_loader = [(torch.cat(train_list_x, dim = 0).to(args.device), torch.cat(train_list_y, dim = 0).to(args.device).to(torch.float32))]
 
     test_list_x = []
     test_list_y = []
     max_batch = args.data_test_amount//batch_size
     for i, (x,y) in enumerate(test_loader):
         if i==max_batch: break
+        print(y)
         test_list_x.append(x)
         test_list_y.append(y)
     test_loader = [(torch.cat(test_list_x, dim = 0).to(args.device), torch.cat(test_list_y, dim = 0).to(args.device).to(torch.float32))]
@@ -280,7 +317,7 @@ def get_label_indices(dataset_name, dset, num_labels):
     label_indices = [[] for _ in range(num_labels)]
     if dataset_name in ["CIFAR10", "CIFAR100", "MNIST"]:
         for idx, label in enumerate(dset.targets):
-            label_indices[label%2].append(idx)
+            label_indices[label%num_labels].append(idx)
     else:
         raise NotImplementedError
     
@@ -302,7 +339,7 @@ def get_dataloader(args):
     args.data_test_amount = 1000
 
     #data_loader = load_mnist_data(args)
-    data_loader = get_data("MNIST", "data", args.data_amount, 0, args.num_clients, args.rank, args, heterogeneity=args.heterogeneity)
+    data_loader = get_data("MNIST", "data", args.data_amount, 0, args.num_clients, args.rank, args, heterogeneity=args.heterogeneity, b01 = args.two_classes)
     y0 = data_loader[0][0][1]
     print(f'BALANCE: 0: {y0[y0 == 0].shape[0]}, 1: {y0[y0 == 1].shape[0]}')
     
