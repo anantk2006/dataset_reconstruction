@@ -123,16 +123,16 @@ class ResNet(nn.Module):
                 expansion=self.expansion
             ))
         return nn.Sequential(*layers)
-    def forward(self, x: Tensor, extract = False) -> Tensor:
+    def forward(self, x: Tensor, extract = False) -> Tensor: 
         x = self.conv1(x)
-        x = self.bn1(x)
+        x = self.bn1(x )
         x = self.relu(x)
         x = self.maxpool(x)
         x = self.layer1(x)
         x = self.layer2(x)
         x = self.layer3(x)
         x = self.layer4(x)
-        # The spatial dimension of the final layer's feature 
+        # The spatial dimension of the final layer's feature  
         # map should be (7, 7) for all ResNets.
         
         x = self.avgpool(x)

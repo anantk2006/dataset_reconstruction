@@ -4,6 +4,7 @@ import torchvision.transforms
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader, SubsetRandomSampler
 import random
+import torchvision
 
 
 def load_bound_dataset(dataset, batch_size, shuffle=False, start=None, end=None, **kwargs):
@@ -88,7 +89,8 @@ def load_mnist_data(args):
     print(f'BALANCE: 0: {y0[y0 == 0].shape[0]}, 1: {y0[y0 == 1].shape[0]}')
 
     return [(x0, y0)], [(x0_test, y0_test)], None
-def get_data(dataset_name, dataroot, batch_size, val_ratio, world_size, rank, args, heterogeneity=0, num_workers=1, small=False):
+tartransform = lambda x: 0 if x in {0,1,8,9} else 1
+def get_data(dataset_name, dataroot, batch_size, val_ratio, world_size, rank, args, heterogeneity=0, num_workers=1, small=False, b01 = False):
     """
     Args:
         dataset_name (str): the name of the dataset to use, currently only
@@ -116,7 +118,8 @@ def get_data(dataset_name, dataroot, batch_size, val_ratio, world_size, rank, ar
         dataset = torchvision.datasets.CIFAR10
         normalize = transforms.Normalize((0.4914, 0.4822, 0.4465),
                                          (0.2470, 0.2435, 0.2616))
-        num_labels = 2
+        num_labels = 2 if not args.multi_class else 10
+        
     elif dataset_name == 'CIFAR100':
         dataset = torchvision.datasets.CIFAR100
         normalize = transforms.Normalize((0.5071, 0.4866, 0.4409),
@@ -151,8 +154,10 @@ def get_data(dataset_name, dataroot, batch_size, val_ratio, world_size, rank, ar
 
     # load and split the train dataset into train and validation and 
     # deployed to all GPUs.
-    ttransform = lambda x: 0 if x in {0, 1, 8, 9} else 1
-    ttransform = transforms.Lambda(ttransform)
+    if not b01 and not args.multi_class: 
+        
+        ttransform = transforms.Lambda(tartransform)
+    else: ttransform=None
     train_set = dataset(root=dataroot, train=True,
                         download=True, transform=transform_train, target_transform=ttransform)
     val_set = dataset(root=dataroot, train=True,
@@ -224,6 +229,29 @@ def get_data(dataset_name, dataroot, batch_size, val_ratio, world_size, rank, ar
         local_test_idx = local_test_idx[:round(len(local_test_idx) / 100)]
 
     # Construct loaders for train, valid, extra, and test sets.
+    if b01:
+        index = 0
+        for i in [*local_train_idx]:
+            X, Y = train_set[i]
+            Y = int(Y)
+            if Y != 0 and Y != 1:
+                
+                local_train_idx.pop(index)
+            else: index+=1
+        index = 0 
+        for i in [*local_valid_idx]:
+            X, Y = val_set[i]
+            Y = int(Y)
+            if Y != 0 and Y != 1:
+                local_valid_idx.pop(index)
+            else: index +=1
+        index = 0 
+        for i in [*local_test_idx]:
+            X, Y = test_set[i]
+            Y = int(Y)
+            if Y != 0 and Y != 1:
+                local_test_idx.pop(index)
+            else: index +=1
     train_sampler = SubsetRandomSampler(local_train_idx)
     train_loader = DataLoader(
         train_set,
@@ -283,7 +311,7 @@ def get_label_indices(dataset_name, dset, num_labels):
     label_indices = [[] for _ in range(num_labels)]
     if dataset_name in ["CIFAR10", "CIFAR100", "MNIST"]:
         for idx, label in enumerate(dset.targets):
-            label_indices[label%2].append(idx)
+            label_indices[label if num_labels==10 else tartransform(label)].append(idx)
     else:
         raise NotImplementedError
     
@@ -292,7 +320,7 @@ def get_label_indices(dataset_name, dset, num_labels):
 
 def get_dataloader(args):
     args.input_dim = 3 * 32 * 32
-    args.num_classes = 2
+    args.num_classes = 10 if args.multi_class else 2
     args.output_dim = 1
     args.dataset = 'cifar'
 

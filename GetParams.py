@@ -100,7 +100,8 @@ def get_args(*args):
     parser.add_argument("--cont_coeff", default=0.1, type = float, help = "weight of contrastive loss")
     parser.add_argument('--cont_margin_ag', default=1000, type=float, help='alpha value for contrastive objective')
     parser.add_argument('--two_classes', default="false", type=str2bool, help='whether or not to use just 0s and 1s')
-    parser.add_argument('--multi_class', default="false", type=str2bool, help='whether or not to do 10 different classes')    
+    parser.add_argument('--multi_class', default="false", type=str2bool, help='whether or not to do 10 different classes') 
+    parser.add_argument('--optimizer', default="sgd", type=str, help='optimizer: options: SGD, full batch')    
 
     if not isinstance(args, list):
         args = args[0]

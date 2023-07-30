@@ -154,8 +154,12 @@ def train(args, train_loader, test_loader, val_loader, model):
             
             optimizer.zero_grad()
             loss.backward()
+            # if args.optimizer =="sgd": optimizer.step()
+            # elif args.optimizer == "gd": 
+            #     for w in model.parameters():
+            #         w.data -= w.grad.data * args.train_lr
+            # else: raise ValueError(f"only sgd and gd accepted for optimizer, you input {args.optimizer}")
             optimizer.step()
-
             err = get_total_err(args, p, y)
             total_err.update(err)
 
@@ -275,12 +279,11 @@ def data_extraction(args, dataset_loader, model):
     # extraction phase
     for epoch in range(args.extraction_epochs):
         
-        if args.multi_class: l2 = l.square() + args.extraction_min_lambda
-        else: l2 = l
-        if not args.decoder: loss, kkt_loss, loss_verify, cont_loss, inver_loss = calc_extraction_loss(args, l2, model, x, y)
+        
+        if not args.decoder: loss, kkt_loss, loss_verify, cont_loss, inver_loss = calc_extraction_loss(args, l, model, x, y)
         else: 
             full_x = decoder(x)
-            loss, kkt_loss, loss_verify, cont_loss, inver_loss = calc_extraction_loss(args, l2, model, full_x, y)
+            loss, kkt_loss, loss_verify, cont_loss, inver_loss = calc_extraction_loss(args, l, model, full_x, y)
         if np.isnan(kkt_loss.item()):
             raise ValueError('Optimizer diverged during extraction')
         

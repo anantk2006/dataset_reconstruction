@@ -73,11 +73,12 @@ def get_kkt_loss(args, values, l, y, model):
         for i in range(c.shape[0]):
             best = torch.tensor([-10**6]).to(args.device)
             
-            truth = torch.tensor([values[i, int(y[i])]]).to(args.device)
+            truth = values[i, int(y[i])]
             for j in range(0, values.shape[1]):
                 
                 if values[i][j]>best and j!=y[i]: 
-                    best = values[i, j]
+                    
+                    best[0] = values[i, j]
                     
             c[i] = truth - best
 
@@ -107,8 +108,9 @@ def get_verify_loss(args, x, l):
     loss_verify = 0
     loss_verify += 1 * (x - 1).relu().pow(2).sum()
     loss_verify += 1 * (-1 - x).relu().pow(2).sum()
-    if not args.multi_class: loss_verify += 5 * (-l + args.extraction_min_lambda).relu().pow(2).sum()
-
+    #  if not args.multi_class: 
+    loss_verify += 5 * (-l + args.extraction_min_lambda).relu().pow(2).sum()
+    #else: loss_verify += 5 * torch.max(-l,  (torch.Tensor([-args.extraction_min_lambda]*l.numel())).to(l.device)).sum()
     return loss_verify
 
 def get_cont_obj(extractions, y, l, args):

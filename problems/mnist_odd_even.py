@@ -90,7 +90,7 @@ def load_mnist_data(args):
     return [(x0, y0)], [(x0_test, y0_test)], None
 
 
-def get_data(dataset_name, dataroot, batch_size, val_ratio, world_size, rank, args, heterogeneity=0, num_workers=1, small=False, b01 = False):
+def get_data(dataset_name, dataroot, batch_size, test_batch_size, val_ratio, world_size, rank, args, heterogeneity=0, num_workers=1, small=False, b01 = False):
     """
     Args:
         dataset_name (str): the name of the dataset to use, currently only
@@ -137,12 +137,11 @@ def get_data(dataset_name, dataroot, batch_size, val_ratio, world_size, rank, ar
 
     if dataset_name.startswith('CIFAR'):
         # Follows Lee et al. Deeply supervised nets. 2014.
-        transform_train = transforms.Compose([transforms.RandomHorizontalFlip(),
-                                              transforms.RandomCrop(32, padding=4),
-                                              transforms.ToTensor(),
-                                              normalize])
-        transform_test = transforms.Compose([transforms.ToTensor(),
-                                             normalize])
+        if args.model_type=="res":
+            transform_train =  transforms.Compose([transforms.ToTensor(), transforms.Resize(224)])
+            transform_test = transform_train
+        transform_train =  transforms.Compose([transforms.ToTensor()])
+        transform_test = transform_train
     elif dataset_name in ['MNIST', 'FashionMNIST']:
         if args.model_type=="res":
             transform_train =  transforms.Compose([transforms.ToTensor(), transforms.Resize(224)])
@@ -294,13 +293,13 @@ def get_data(dataset_name, dataroot, batch_size, val_ratio, world_size, rank, ar
         train_list_x.append(x)
         train_list_y.append(y)
     train_loader = [(torch.cat(train_list_x, dim = 0).to(args.device), torch.cat(train_list_y, dim = 0).to(args.device).to(torch.float32))]
-
+    
     test_list_x = []
     test_list_y = []
-    max_batch = args.data_test_amount//batch_size
+    max_batch = args.data_test_amount//test_batch_size
     for i, (x,y) in enumerate(test_loader):
         if i==max_batch: break
-        print(y)
+       
         test_list_x.append(x)
         test_list_y.append(y)
     test_loader = [(torch.cat(test_list_x, dim = 0).to(args.device), torch.cat(test_list_y, dim = 0).to(args.device).to(torch.float32))]
@@ -326,7 +325,7 @@ def get_label_indices(dataset_name, dset, num_labels):
 
 def get_dataloader(args):
     args.input_dim = 28 * 28
-    args.num_classes = 2
+    args.num_classes = 10 if args.multi_class else 2
     args.output_dim = 1
     args.dataset = 'mnist'
 
@@ -339,7 +338,7 @@ def get_dataloader(args):
     args.data_test_amount = 1000
 
     #data_loader = load_mnist_data(args)
-    data_loader = get_data("MNIST", "data", args.data_amount, 0, args.num_clients, args.rank, args, heterogeneity=args.heterogeneity, b01 = args.two_classes)
+    data_loader = get_data("MNIST", "data", args.data_amount, args.data_test_amount, 0, args.num_clients, args.rank, args, heterogeneity=args.heterogeneity, b01 = args.two_classes)
     y0 = data_loader[0][0][1]
     print(f'BALANCE: 0: {y0[y0 == 0].shape[0]}, 1: {y0[y0 == 1].shape[0]}')
     
